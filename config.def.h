@@ -24,17 +24,17 @@ static char *tags_names[] = { " 1 ", " 2 ", " 3 ", " 4 ", " 5 ", " 6 ", " 7 ", "
 // set 16-bit colors for bar
 // 8-bit color can be converted to 16-bit color by simply duplicating values e.g
 // 0x55 -> 0x5555, 0xf1 -> 0xf1f1
-static pixman_color_t active_fg_color = { .red = 0x2727, .green = 0x2727, .blue = 0x2727, .alpha = 0xffff, };
+static pixman_color_t active_fg_color = { .red = 0x1313, .green = 0x1414, .blue = 0x1717, .alpha = 0xffff, };
 static pixman_color_t active_bg_color = { .red = 0xf2f2, .green = 0xf0f0, .blue = 0xfafa, .alpha = 0xffff, };
 
 static pixman_color_t occupied_fg_color = { .red = 0xf2f2, .green = 0xf0f0, .blue = 0xfafa, .alpha = 0xffff, };
-static pixman_color_t occupied_bg_color = { .red = 0x2727, .green = 0x2727, .blue = 0x2727, .alpha = 0xffff, };
+static pixman_color_t occupied_bg_color = { .red = 0x1313, .green = 0x1414, .blue = 0x1717, .alpha = 0xffff, };
 
 static pixman_color_t inactive_fg_color = { .red = 0xf2f2, .green = 0xf0f0, .blue = 0xfafa, .alpha = 0xffff, };
-static pixman_color_t inactive_bg_color = { .red = 0x2727, .green = 0x2727, .blue = 0x2727, .alpha = 0xffff, };
+static pixman_color_t inactive_bg_color = { .red = 0x1313, .green = 0x1414, .blue = 0x1717, .alpha = 0xffff, };
 
 static pixman_color_t urgent_fg_color = { .red = 0xf2f2, .green = 0xf0f0, .blue = 0xfafa, .alpha = 0xffff, };
-static pixman_color_t urgent_bg_color = { .red = 0x2727, .green = 0x2727, .blue = 0x2727, .alpha = 0xffff, };
+static pixman_color_t urgent_bg_color = { .red = 0x1313, .green = 0x1414, .blue = 0x1717, .alpha = 0xffff, };
 
-static pixman_color_t middle_bg_color = { .red = 0x2727, .green = 0x2727, .blue = 0x2727, .alpha = 0xffff, };
+static pixman_color_t middle_bg_color = { .red = 0x1313, .green = 0x1414, .blue = 0x1717, .alpha = 0xffff, };
 static pixman_color_t middle_bg_color_selected = { .red = 0xf2f2, .green = 0xf0f0, .blue = 0xfafa, .alpha = 0xffff, };
