@@ -7,7 +7,7 @@ static bool bottom = true;
 // hide vacant tags
 static bool hide_vacant = false;
 // vertical pixel padding above and below text
-static uint32_t vertical_padding = 1;
+static uint32_t vertical_padding = 4;
 // allow in-line color commands in status text
 static bool status_commands = true;
 // center title text
@@ -19,7 +19,7 @@ static uint32_t buffer_scale = 1;
 // font
 static char *fontstr = "UbuntuMono Nerd Font:size=14";
 // tag names
-static char *tags_names[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
+static char *tags_names[] = { " 1 ", " 2 ", " 3 ", "4", "5", "6", "7", "8", "9" };
 
 // set 16-bit colors for bar
 // 8-bit color can be converted to 16-bit color by simply duplicating values e.g
