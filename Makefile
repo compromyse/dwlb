@@ -1,8 +1,10 @@
-BINS = dwlb
+BINS = dwlb dwlbtray
 MANS = dwlb.1
+RESOURCES = Resources/DBusMenu.xml Resources/StatusNotifierItem.xml Resources/StatusNotifierWatcher.xml Resources/boxbg.css
 
 PREFIX ?= /usr/local
-CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation -g
+CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation -g \
+		  -DBUILD_DIR=\"$(shell pwd)/\"
 
 all: $(BINS)
 
@@ -15,6 +17,7 @@ clean:
 install: all
 	install -D -t $(PREFIX)/bin $(BINS)
 	install -D -m0644 -t $(PREFIX)/share/man/man1 $(MANS)
+	install -D -m0644 -t $(PREFIX)/share/dwlb $(RESOURCES)
 
 WAYLAND_PROTOCOLS=$(shell pkg-config --variable=pkgdatadir wayland-protocols)
 WAYLAND_SCANNER=$(shell pkg-config --variable=wayland_scanner wayland-scanner)
@@ -48,8 +51,16 @@ dwlb.o: utf8.h config.h xdg-shell-protocol.h xdg-output-unstable-v1-protocol.h w
 # Protocol dependencies
 dwlb: xdg-shell-protocol.o xdg-output-unstable-v1-protocol.o wlr-layer-shell-unstable-v1-protocol.o dwl-ipc-unstable-v2-protocol.o
 
+statusnotifierhost.o: dwlbtray.h
+statusnotifieritem.o: dwlbtray.h
+dbusmenu.o: dwlbtray.h
+dwlbtray.o: dwlbtray.h
+dwlbtray: dwlbtray.o statusnotifierhost.o statusnotifieritem.o dbusmenu.o
+
 # Library dependencies
 dwlb: CFLAGS+=$(shell pkg-config --cflags wayland-client wayland-cursor fcft pixman-1)
 dwlb: LDLIBS+=$(shell pkg-config --libs wayland-client wayland-cursor fcft pixman-1) -lrt
+dwlbtray: CFLAGS+=$(shell pkg-config --cflags glib-2.0 gtk4 gtk4-layer-shell-0)
+dwlbtray: LDLIBS+=$(shell pkg-config --libs glib-2.0 gtk4 gtk4-layer-shell-0) -lrt
 
 .PHONY: all clean install

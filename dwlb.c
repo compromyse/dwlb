@@ -109,6 +109,7 @@
 	"	-set-top [OUTPUT]		draw bar at the top\n"	\
 	"	-set-bottom [OUTPUT]		draw bar at the bottom\n" \
 	"	-toggle-location [OUTPUT]	toggle bar location\n"	\
+	"	-traymon [OUTPUT]		set monitor name where systray will appear\n"	\
 	"Other\n"							\
 	"	-v				get version information\n" \
 	"	-h				view this help text\n"
@@ -150,6 +151,7 @@ typedef struct {
 
 	bool configured;
 	uint32_t width, height;
+	uint32_t width_orig;
 	uint32_t textpadding;
 	uint32_t stride, bufsize;
 	
@@ -497,10 +499,11 @@ layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *surface,
 	
 	Bar *bar = (Bar *)data;
 	
-	if (bar->configured && w == bar->width && h == bar->height)
+	if (bar->configured && w == bar->width_orig && h == bar->height)
 		return;
 	
 	bar->width = w;
+	bar->width_orig = w;
 	bar->height = h;
 	bar->stride = bar->width * 4;
 	bar->bufsize = bar->stride * bar->height;
@@ -1427,6 +1430,17 @@ copy_customtext(CustomText *from, CustomText *to)
 }
 
 static void
+request_resize(Bar *bar, char *data)
+{
+	uint32_t traywidth = (uint32_t)atoi(data);
+
+	bar->width = bar->width_orig - traywidth;
+	bar->stride = bar->width * 4;
+	bar->bufsize = bar->stride * bar->height;
+	bar->redraw = true;
+}
+
+static void
 read_socket(void)
 {
 	int cli_fd;
@@ -1571,6 +1585,8 @@ read_socket(void)
 			else
 				set_bottom(bar);
 		}
+	} else if (!strcmp(wordbeg, "resize")) {
+		request_resize(bar, wordend);
 	}
 }
 
@@ -1669,6 +1685,7 @@ main(int argc, char **argv)
 	struct sockaddr_un sock_address;
 	Bar *bar, *bar2;
 	Seat *seat, *seat2;
+	char *traymon = NULL;
 
 	/* Establish socket directory */
 	if (!(xdgruntimedir = getenv("XDG_RUNTIME_DIR")))
@@ -1848,6 +1865,10 @@ main(int argc, char **argv)
 			if (++i >= argc)
 				DIE("Option -scale requires an argument");
 			buffer_scale = strtoul(argv[i], &argv[i] + strlen(argv[i]), 10);
+		} else if (!strcmp(argv[i], "-traymon")) {
+			if (++i >= argc)
+				DIE("Option -traymon requires an argument");
+			traymon = argv[i];
 		} else if (!strcmp(argv[i], "-v")) {
 			fprintf(stderr, PROGRAM " " VERSION "\n");
 			return 0;
@@ -1940,6 +1961,34 @@ main(int argc, char **argv)
 	signal(SIGTERM, sig_handler);
 	signal(SIGCHLD, SIG_IGN);
 	
+	/* Start tray program */
+	char progname[PATH_MAX];
+	ssize_t len = readlink("/proc/self/exe", progname, sizeof(progname));
+
+	if (len != -1)
+		progname[len] = '\0';
+	else
+		exit(-1);
+
+	char tray_exe_path[PATH_MAX];
+	if (strncmp(progname, BUILD_DIR, strlen(BUILD_DIR)) == 0) {
+		strcpy(tray_exe_path, BUILD_DIR);
+		strcat(tray_exe_path, "dwlbtray");
+	} else {
+		strcpy(tray_exe_path, "dwlbtray");
+	}
+	int child_pid = fork();
+	if (child_pid == 0) {
+		char height_param[64];
+		char traymon_param[64];
+		snprintf(height_param, sizeof(height_param), "--height=%u", height);
+		snprintf(traymon_param, sizeof(traymon_param), "--traymon=%s", traymon);
+		char *args[] = { tray_exe_path, height_param, traymon_param, NULL};
+		if (!traymon)
+			args[2] = NULL;
+		execvp(args[0], args);
+	}
+
 	/* Run */
 	run_display = true;
 	event_loop();

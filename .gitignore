@@ -9,3 +9,7 @@ xdg-output-unstable-v1-protocol.c
 xdg-output-unstable-v1-protocol.h
 dwl-ipc-unstable-v2-protocol.c
 dwl-ipc-unstable-v2-protocol.h
+dwlbtray
+valgrind*
+.cache
+compile_commands.json

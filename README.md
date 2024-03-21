@@ -3,6 +3,8 @@
 
 A fast, feature-complete bar for [dwl](https://github.com/djpohly/dwl).
 
+This fork adds the systemtray feature implementing KDE's KStatusNotifierItem spec
+
 ![screenshot 1](/screenshot1.png "screenshot 1")
 ![screenshot 2](/screenshot2.png "screenshot 2")
 </div>
@@ -12,6 +14,8 @@ A fast, feature-complete bar for [dwl](https://github.com/djpohly/dwl).
 * libwayland-cursor
 * pixman
 * fcft
+* gtk4
+* [gtk4-layer-shell](https://github.com/wmww/gtk4-layer-shell)
 
 ## Installation
 ```bash
@@ -25,6 +29,11 @@ make install
 Pass `dwlb` as an argument to dwl's `-s` flag. This will populate each connected output with a bar. For example:
 ```bash
 dwl -s 'dwlb -font "monospace:size=16"'
+```
+
+To specify on which monitor the systray will appear, append option `-traymon [OUTPUT]` to the command line:
+```bash
+dwl -s 'dwlb -font "monospace:size=16" -traymon DP-1
 ```
 
 ## Ipc
