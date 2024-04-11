@@ -1,9 +1,8 @@
 <div align="center">
 <h1>dwlb</h1>
+<h2>This fork adds the systemtray feature implementing KDE's KStatusNotifierItem spec</h2>
 
 A fast, feature-complete bar for [dwl](https://github.com/djpohly/dwl).
-
-This fork adds the systemtray feature implementing KDE's KStatusNotifierItem spec
 
 ![screenshot 1](/screenshot1.png "screenshot 1")
 ![screenshot 2](/screenshot2.png "screenshot 2")
@@ -19,7 +18,7 @@ This fork adds the systemtray feature implementing KDE's KStatusNotifierItem spe
 
 ## Installation
 ```bash
-git clone https://github.com/kolunmi/dwlb
+git clone https://github.com/vetu104/dwlb.git
 cd dwlb
 make
 make install
