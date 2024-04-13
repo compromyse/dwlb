@@ -207,23 +207,24 @@ new_iconname_handler(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *s
 	}
 
 	GVariant *iconname_v;
-	char *iconname = NULL;
+	const char *iconname = NULL;
 	g_variant_get(data, "(v)", &iconname_v);
-	g_variant_get(iconname_v, "s", &iconname);
+	g_variant_get(iconname_v, "&s", &iconname);
+	g_variant_unref(iconname_v);
 
 	if (strcmp(iconname, snitem->iconname) == 0) {
 		g_debug("%s\n", "pixmap didnt change, nothing to");
-		g_variant_unref(iconname_v);
 		g_variant_unref(data);
 		return;
 	}
 
+	g_free(snitem->iconname);
 	g_object_unref(snitem->paintable);
-	snitem->iconname = iconname;
+
+	snitem->iconname = g_strdup(iconname);
 	snitem->paintable = get_paintable_from_name(snitem->iconname);
 	gtk_image_set_from_paintable(GTK_IMAGE(snitem->icon), snitem->paintable);
 
-	g_variant_unref(iconname_v);
 	g_variant_unref(data);
 }
 
@@ -297,19 +298,19 @@ create_icon(GDBusProxy *proxy, StatusNotifierItem *snitem)
 
 	GtkWidget *image = NULL;
 
-	char *iconname = NULL;
+	const char *iconname = NULL;
 	GdkPaintable *paintable = NULL;
 	GVariant *iconname_v = g_dbus_proxy_get_cached_property(proxy, "IconName");
 
 	if (iconname_v) {
-		g_variant_get(iconname_v, "s", &iconname);
+		g_variant_get(iconname_v, "&s", &iconname);
 		g_variant_unref(iconname_v);
 	}
 
 	if (iconname && strcmp(iconname, "") != 0) {
 		paintable = get_paintable_from_name(iconname);
 
-		snitem->iconname = iconname;
+		snitem->iconname = g_strdup(iconname);
 
 	} else {
 		GVariant *iconpixmap_v = g_dbus_proxy_get_cached_property(proxy, "IconPixmap");
@@ -319,8 +320,6 @@ create_icon(GDBusProxy *proxy, StatusNotifierItem *snitem)
 
 		snitem->iconpixmap_v = iconpixmap_v;
 
-		if (iconname)
-			g_free(iconname);
 	}
 
 	image = gtk_image_new_from_paintable(paintable);

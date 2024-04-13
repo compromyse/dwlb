@@ -149,36 +149,31 @@ unregister_statusnotifieritem(StatusNotifierItem *snitem, StatusNotifierHost *sn
 		g_slist_free_full(snitem->action_cb_data_slist, g_free);
 		g_object_unref(snitem->menu);
 	}
+	if (snitem->menunodeinfo)
+		g_dbus_node_info_unref(snitem->menunodeinfo);
 
-	g_object_unref(snitem->paintable);
-	if (snitem->iconpixmap_v)
-		g_variant_unref(snitem->iconpixmap_v);
+	if (snitem->paintable) {
+		g_object_unref(snitem->paintable);
+		if (snitem->iconpixmap_v)
+			g_variant_unref(snitem->iconpixmap_v);
+		if (snitem->iconname)
+			g_free(snitem->iconname);
+	}
 
 	g_object_unref(snitem->proxy);
-	g_object_unref(snitem->actiongroup);
-	g_dbus_node_info_unref(snitem->menunodeinfo);
 	g_dbus_node_info_unref(snitem->nodeinfo);
-	if (snitem->iconname)
-		g_free(snitem->iconname);
+	g_object_unref(snitem->actiongroup);
 	g_free(snitem->busname);
 	g_free(snitem->busobj);
 	g_free(snitem->menuobj);
 	snhost->trayitems = g_slist_remove(snhost->trayitems, snitem);
+
 	g_free(snitem);
 	snitem = NULL;
 
 	snhost->noitems = snhost->noitems - 1;
 	dwlb_request_resize(snhost);
 }
-
-
-/*
- * static void
- * unregister_all(StatusNotifierHost *snhost)
- * {
- * 	g_slist_foreach(snhost->trayitems, (GFunc)unregister_statusnotifieritem, snhost);
- * }
-*/
 
 
 static void
@@ -255,18 +250,6 @@ handle_get_prop(GDBusConnection* conn,
 	}
 }
 
-/*
- * void
- * terminate_statusnotifierhost(StatusNotifierHost *snhost)
- * {
- * 	g_dbus_connection_signal_unsubscribe(snhost->conn, snhost->nameowner_sig_sub_id);
- * 	g_bus_unown_name(snhost->owner_id);
- * 	unregister_all(snhost);
- * 	g_slist_free(snhost->trayitems);
- * 	g_dbus_node_info_unref(snhost->nodeinfo);
- * 	g_free(snhost);
- * }
- */
 
 // Finds trayitems which dropped from the bus and untracks them
 static void
