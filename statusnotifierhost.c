@@ -201,6 +201,8 @@ unregister_statusnotifieritem(StatusNotifierItem *snitem, StatusNotifierHost *sn
 	g_object_unref(snitem->actiongroup);
 	g_dbus_node_info_unref(snitem->menunodeinfo);
 	g_dbus_node_info_unref(snitem->nodeinfo);
+	if (snitem->iconname)
+		g_free(snitem->iconname);
 	g_free(snitem->busname);
 	g_free(snitem->busobj);
 	g_free(snitem->menuobj);
