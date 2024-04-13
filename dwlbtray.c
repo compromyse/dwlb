@@ -10,9 +10,6 @@
 #include "dwlbtray.h"
 
 
-const char *RESOURCE_PATH;
-
-
 static void
 activate(GtkApplication* app, StatusNotifierHost *snhost)
 {
@@ -81,36 +78,9 @@ activate(GtkApplication* app, StatusNotifierHost *snhost)
 int
 main(int argc, char *argv[])
 {
-	char progname[PATH_MAX];
-	ssize_t len = readlink("/proc/self/exe", progname, sizeof(progname));
-
-	if (len != -1) {
-		progname[len] = '\0';
-	}
-	else {
-		fprintf(stderr, "bad progname, exiting\n");
-		exit(-1);
-	}
-
-	if (strncmp(progname, BUILD_DIR, strlen(BUILD_DIR)) == 0) {
-		RESOURCE_PATH = g_strdup_printf("%s%s", BUILD_DIR, "Resources");
-	} else {
-		const char * const *datadirs = g_get_system_data_dirs();
-		int i;
-
-		for (i = 0; datadirs[i]; i++) {
-			char *test = g_build_filename(datadirs[i], "dwlb", "boxbg.css", NULL);
-			if (g_file_test(test, G_FILE_TEST_EXISTS))
-				RESOURCE_PATH = g_path_get_dirname(test);
-		}
-	}
-
-	if (!RESOURCE_PATH)
-		RESOURCE_PATH = "/usr/local/dwlb";
-
 	StatusNotifierHost *snhost = start_statusnotifierhost();
 
-	const char *bgcolor;
+	char *bgcolor = NULL;
 	int i = 1;
 	for (; i < argc; i++) {
 		char **strings = g_strsplit(argv[i], "=", 0);
@@ -125,6 +95,7 @@ main(int argc, char *argv[])
 	}
 
 	snhost->cssdata = g_strdup_printf("window{background-color:%s;}", bgcolor);
+	g_free(bgcolor);
 
 	GtkApplication *app = gtk_application_new("com.vetu104.Gtktray",
 	                                          G_APPLICATION_DEFAULT_FLAGS);
@@ -136,7 +107,7 @@ main(int argc, char *argv[])
 	 * g_unix_signal_add(SIGTERM, (GSourceFunc)terminate_app, snhost);
 	 */
 
-	char *argv_inner[] = { progname, NULL };
+	char *argv_inner[] = { argv[0], NULL };
 	int status = g_application_run(G_APPLICATION(app), 1, argv_inner);
 
 	g_object_unref(app);

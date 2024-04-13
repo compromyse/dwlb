@@ -1963,17 +1963,10 @@ main(int argc, char **argv)
 	
 	/* Start tray program */
 	char tray_exe_path[PATH_MAX];
-	char progname[PATH_MAX];
+	char traypath_maybe[PATH_MAX];
 	char traybg_arg[64];
 	char height_arg[64];
 	char traymon_arg[64];
-
-	ssize_t len = readlink("/proc/self/exe", progname, sizeof(progname));
-
-	if (len != -1)
-		progname[len] = '\0';
-	else
-		exit(-1);
 
 	pixman_color_t *traybg_clr = &inactive_bg_color;
 	snprintf(traybg_arg,
@@ -1983,12 +1976,12 @@ main(int argc, char **argv)
 	         (int8_t)traybg_clr->green,
 	         (int8_t)traybg_clr->blue);
 
-	if (strncmp(progname, BUILD_DIR, strlen(BUILD_DIR)) == 0) {
-		strcpy(tray_exe_path, BUILD_DIR);
-		strcat(tray_exe_path, "dwlbtray");
-	} else {
+
+	snprintf(traypath_maybe, sizeof(traypath_maybe), "%stray", argv[0]);
+	if (access(traypath_maybe, X_OK) == 0)
+		strcpy(tray_exe_path, traypath_maybe);
+	else
 		strcpy(tray_exe_path, "dwlbtray");
-	}
 
 	snprintf(height_arg, sizeof(height_arg), "--height=%u", height);
 	snprintf(traymon_arg, sizeof(traymon_arg), "--traymon=%s", traymon);

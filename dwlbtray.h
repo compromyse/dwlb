@@ -5,8 +5,6 @@
 #include <gio/gio.h>
 #include <gtk/gtk.h>
 
-extern const char *RESOURCE_PATH;
-
 typedef struct {
 	uint32_t id;
 	GDBusProxy* proxy;
