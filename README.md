@@ -18,7 +18,7 @@ A fast, feature-complete bar for [dwl](https://github.com/djpohly/dwl).
 
 ## Installation
 ```bash
-git clone https://github.com/vetu104/dwlb.git
+git clone https://github.com/vetu104/dwlb
 cd dwlb
 make
 make install
