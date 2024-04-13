@@ -2,8 +2,7 @@ BINS = dwlb dwlbtray
 MANS = dwlb.1
 
 PREFIX ?= /usr/local
-CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation -g \
-		  -DBUILD_DIR=\"$(shell pwd)/\"
+CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation -g
 
 all: $(BINS)
 
