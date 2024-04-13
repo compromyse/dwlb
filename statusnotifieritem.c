@@ -198,7 +198,7 @@ new_iconname_handler(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *s
 {
 	GError *err = NULL;
 	GVariant *data = g_dbus_proxy_call_finish(proxy, res, &err);
-	// (s)
+	// (v)
 
 	if (err) {
 		g_debug("%s\n", err->message);
@@ -302,7 +302,7 @@ create_icon(GDBusProxy *proxy, StatusNotifierItem *snitem)
 	GVariant *iconname_v = g_dbus_proxy_get_cached_property(proxy, "IconName");
 
 	if (iconname_v) {
-		g_variant_get(iconname_v, "s", iconname);
+		g_variant_get(iconname_v, "s", &iconname);
 		g_variant_unref(iconname_v);
 	}
 
