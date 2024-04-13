@@ -32,7 +32,7 @@ dwl -s 'dwlb -font "monospace:size=16"'
 
 To specify on which monitor the systray will appear, append option `-traymon [OUTPUT]` to the command line:
 ```bash
-dwl -s 'dwlb -font "monospace:size=16" -traymon DP-1
+dwl -s 'dwlb -font "monospace:size=16" -traymon DP-1'
 ```
 
 ## Ipc
