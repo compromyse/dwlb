@@ -206,13 +206,13 @@ new_iconname_handler(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *s
 		return;
 	}
 
-	char *iconname = NULL;
 	GVariant *iconname_v;
+	char *iconname = NULL;
 	g_variant_get(data, "(v)", &iconname_v);
 	g_variant_get(iconname_v, "s", &iconname);
 
 	if (strcmp(iconname, snitem->iconname) == 0) {
-		g_debug ("%s\n", "pixmap didnt change, nothing to");
+		g_debug("%s\n", "pixmap didnt change, nothing to");
 		g_variant_unref(iconname_v);
 		g_variant_unref(data);
 		return;
@@ -222,6 +222,8 @@ new_iconname_handler(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *s
 	snitem->iconname = iconname;
 	snitem->paintable = get_paintable_from_name(snitem->iconname);
 	gtk_image_set_from_paintable(GTK_IMAGE(snitem->icon), snitem->paintable);
+
+	g_variant_unref(iconname_v);
 	g_variant_unref(data);
 }
 
