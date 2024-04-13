@@ -99,35 +99,21 @@ register_statusnotifieritem(const char *busname,
                             const char *busobj,
                             StatusNotifierHost *snhost)
 {
-	StatusNotifierItem *snitem;
-	snitem = g_malloc(sizeof(StatusNotifierItem));
+	char *xml_path = g_strdup_printf("%s%s", RESOURCE_PATH, "/StatusNotifierItem.xml");
 
-	snitem->busname = g_strdup(busname);
-	snitem->busobj = g_strdup(busobj);
+	StatusNotifierItem *snitem;
+	snitem = g_malloc0(sizeof(StatusNotifierItem));
 
 	snitem->host = snhost;
-
-	char *xml_path = g_strdup_printf("%s%s", RESOURCE_PATH, "/StatusNotifierItem.xml");
+	snitem->busname = g_strdup(busname);
+	snitem->busobj = g_strdup(busobj);
 	snitem->nodeinfo = get_interface_info(xml_path);
-	g_free(xml_path);
-
-	snitem->action_cb_data_slist = NULL;
-	snitem->actiongroup = NULL;
-	snitem->icon = NULL;
-	snitem->iconname = NULL;
-	snitem->iconpixmap_v = NULL;
-	snitem->menu = NULL;
-	snitem->menunodeinfo = NULL;
-	snitem->menuobj = NULL;
-	snitem->menuproxy = NULL;
-	snitem->paintable = NULL;
-	snitem->popovermenu = NULL;
 
 	snhost->noitems = snhost->noitems + 1;
-
-	dwlb_request_resize(snhost);
-
 	snhost->trayitems = g_slist_prepend(snhost->trayitems, snitem);
+
+	g_free(xml_path);
+	dwlb_request_resize(snhost);
 
 	g_dbus_proxy_new(snhost->conn,
                          G_DBUS_PROXY_FLAGS_NONE,
