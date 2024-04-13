@@ -1,11 +1,9 @@
 #include <stdlib.h>
 #include <unistd.h>
-// #include <limits.h>
 
 #include <glib.h>
 #include <gtk4-layer-shell.h>
 #include <gtk/gtk.h>
-// #include "glib-unix.h"
 
 #include "dwlbtray.h"
 
@@ -16,7 +14,15 @@ activate(GtkApplication* app, StatusNotifierHost *snhost)
 	GdkDisplay *display = gdk_display_get_default();
 
 	GtkWindow *window = GTK_WINDOW(gtk_application_window_new(app));
-	snhost->window = window;
+	gtk_window_set_default_size(GTK_WINDOW(window), 22, snhost->height);
+
+	GtkCssProvider *css = gtk_css_provider_new();
+	gtk_css_provider_load_from_string(css, snhost->cssdata);
+	gtk_style_context_add_provider_for_display(display,
+	                                           GTK_STYLE_PROVIDER(css),
+	                                           GTK_STYLE_PROVIDER_PRIORITY_USER);
+	gtk_widget_add_css_class(GTK_WIDGET(window), "dwlbtray");
+
 
 	gtk_layer_init_for_window(window);
 	gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_BOTTOM);
@@ -37,43 +43,19 @@ activate(GtkApplication* app, StatusNotifierHost *snhost)
 		}
 	}
 
-	GtkCssProvider *css = gtk_css_provider_new();
-	gtk_css_provider_load_from_string(css, snhost->cssdata);
-	gtk_style_context_add_provider_for_display(display,
-	                                           GTK_STYLE_PROVIDER(css),
-	                                           GTK_STYLE_PROVIDER_PRIORITY_USER);
-
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
-
 	gtk_widget_set_vexpand(box, TRUE);
 	gtk_widget_set_hexpand(box, TRUE);
 	gtk_widget_set_margin_start(box, snhost->margin);
 	gtk_widget_set_margin_end(box, snhost->margin);
-
-	gtk_window_set_default_size(GTK_WINDOW(window), 22, snhost->height);
-	dwlb_request_resize(snhost);
-
+	gtk_window_set_child(window, box);
 	snhost->box = box;
 
-	gtk_window_set_child(window, box);
-
+	dwlb_request_resize(snhost);
 	gtk_window_present(window);
 
 }
 
-
-/*
- * gboolean
- * terminate_app(StatusNotifierHost *snhost)
- * {
- * 	terminate_statusnotifierhost(snhost);
- *
- * 	GApplication *app = g_application_get_default();
- * 	g_application_release(app);
- *
- * 	return G_SOURCE_REMOVE;
- * }
- */
 
 int
 main(int argc, char *argv[])
@@ -81,6 +63,8 @@ main(int argc, char *argv[])
 	StatusNotifierHost *snhost = start_statusnotifierhost();
 
 	char *bgcolor = NULL;
+	char *cssdata;
+
 	int i = 1;
 	for (; i < argc; i++) {
 		char **strings = g_strsplit(argv[i], "=", 0);
@@ -94,18 +78,18 @@ main(int argc, char *argv[])
 		g_strfreev(strings);
 	}
 
-	snhost->cssdata = g_strdup_printf("window{background-color:%s;}", bgcolor);
+	if (bgcolor)
+		cssdata = g_strdup_printf("window.dwlbtray{background-color:%s;}", bgcolor);
+	else
+		cssdata = g_strdup_printf("window.dwlbtray{background-color:%s;}", "#222222");
+
+	snhost->cssdata = cssdata;
 	g_free(bgcolor);
 
 	GtkApplication *app = gtk_application_new("com.vetu104.Gtktray",
 	                                          G_APPLICATION_DEFAULT_FLAGS);
 
 	g_signal_connect(app, "activate", G_CALLBACK(activate), snhost);
-
-	/*
-	 * g_unix_signal_add(SIGINT, (GSourceFunc)terminate_app, snhost);
-	 * g_unix_signal_add(SIGTERM, (GSourceFunc)terminate_app, snhost);
-	 */
 
 	char *argv_inner[] = { argv[0], NULL };
 	int status = g_application_run(G_APPLICATION(app), 1, argv_inner);
