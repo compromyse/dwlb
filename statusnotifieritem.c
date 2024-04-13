@@ -375,12 +375,7 @@ create_trayitem(GDBusConnection *conn, GAsyncResult *res, StatusNotifierItem *sn
 	}
 	snitem->actiongroup = g_simple_action_group_new();
 
-	char *xml_path = g_strdup_printf("%s%s", RESOURCE_PATH, "/DBusMenu.xml");
-	snitem->menunodeinfo = get_interface_info(xml_path);
-	g_free(xml_path);
-
-	// gtk_popover_menu_set_menu_model(GTK_POPOVER_MENU(snitem->popovermenu),
-	//                                 G_MENU_MODEL(snitem->menu));
+	snitem->menunodeinfo = g_dbus_node_info_new_for_xml(DBUSMENU_XML, NULL);
 
 	g_signal_connect(snitem->proxy, "g-signal", G_CALLBACK(trayitem_signal_handler), snitem);
 

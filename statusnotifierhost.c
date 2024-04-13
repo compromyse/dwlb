@@ -66,53 +66,24 @@ dwlb_request_resize(StatusNotifierHost *snhost)
 	g_free(socketpath);
 }
 
-GDBusNodeInfo*
-get_interface_info(const char *xmlpath)
-{
-	char *contents;
-	GError *err = NULL;
-
-	g_file_get_contents(xmlpath, &contents, NULL, &err);
-
-	if (err) {
-		fprintf(stderr, "%s\n", err->message);
-		g_error_free(err);
-		return NULL;
-	}
-
-	GDBusNodeInfo *node = g_dbus_node_info_new_for_xml(contents, &err);
-	g_free(contents);
-
-	if (err) {
-		fprintf(stderr, "%s\n", err->message);
-		g_error_free(err);
-		return NULL;
-	}
-
-	return node;
-}
-
-
 
 static void
 register_statusnotifieritem(const char *busname,
                             const char *busobj,
                             StatusNotifierHost *snhost)
 {
-	char *xml_path = g_strdup_printf("%s%s", RESOURCE_PATH, "/StatusNotifierItem.xml");
-
 	StatusNotifierItem *snitem;
 	snitem = g_malloc0(sizeof(StatusNotifierItem));
 
 	snitem->host = snhost;
 	snitem->busname = g_strdup(busname);
 	snitem->busobj = g_strdup(busobj);
-	snitem->nodeinfo = get_interface_info(xml_path);
+	snitem->nodeinfo = g_dbus_node_info_new_for_xml(STATUSNOTIFIERITEM_XML, NULL);
 
 	snhost->noitems = snhost->noitems + 1;
 	snhost->trayitems = g_slist_prepend(snhost->trayitems, snitem);
 
-	g_free(xml_path);
+	// g_free(xml_path);
 	dwlb_request_resize(snhost);
 
 	g_dbus_proxy_new(snhost->conn,
@@ -402,9 +373,7 @@ StatusNotifierHost*
 start_statusnotifierhost()
 {
 	StatusNotifierHost *snhost = g_malloc0(sizeof(StatusNotifierHost));
-	char *xml_path = g_strdup_printf("%s%s", RESOURCE_PATH, "/StatusNotifierWatcher.xml");
-	snhost->nodeinfo = get_interface_info(xml_path);
-	g_free(xml_path);
+	snhost->nodeinfo = g_dbus_node_info_new_for_xml(STATUSNOTIFIERWATCHER_XML, NULL);
 
 	snhost->height = 22;
 	snhost->margin = 4;

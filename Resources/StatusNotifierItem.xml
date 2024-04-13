@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <node>
     <interface name="org.kde.StatusNotifierItem">
-
         <!-- methods -->
         <method name="Activate">
             <arg name="x" type="i" direction="in"/>
@@ -21,7 +20,6 @@
             <arg name="y" type="i" direction="in"/>
         </method>
         -->
-
         <!-- properties -->
         <property name="Menu" type="o" access="read"/>
         <property name="IconName" type="s" access="read"/>
@@ -41,7 +39,6 @@
         <property name="AttentionMovieName" type="s" access="read"/>
         <property name="ToolTip" type="(sa(iiay)ss)" access="read"/>
         -->
-
         <!-- signals -->
         <signal name="NewIcon"/>
         <!--
@@ -53,6 +50,5 @@
           <arg name="status" type="s"/>
         </signal>
         -->
-
   </interface>
 </node>
