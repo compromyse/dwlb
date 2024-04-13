@@ -1971,11 +1971,12 @@ main(int argc, char **argv)
 	pixman_color_t *traybg_clr = &inactive_bg_color;
 	snprintf(traybg_arg,
 	         sizeof(traybg_arg),
-	         "--bg-color=#%x%x%x",
-	         (int8_t)traybg_clr->red,
-	         (int8_t)traybg_clr->green,
-	         (int8_t)traybg_clr->blue);
+	         "--bg-color=#%02x%02x%02x",
+	         (traybg_clr->red / 0x100),
+	         (traybg_clr->green / 0x100),
+	         (traybg_clr->blue) / 0x100);
 
+	printf("%s\n", traybg_arg);
 
 	snprintf(traypath_maybe, sizeof(traypath_maybe), "%stray", argv[0]);
 	if (access(traypath_maybe, X_OK) == 0)
