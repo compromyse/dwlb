@@ -1962,7 +1962,12 @@ main(int argc, char **argv)
 	signal(SIGCHLD, SIG_IGN);
 	
 	/* Start tray program */
+	char tray_exe_path[PATH_MAX];
 	char progname[PATH_MAX];
+	char traybg_arg[64];
+	char height_arg[64];
+	char traymon_arg[64];
+
 	ssize_t len = readlink("/proc/self/exe", progname, sizeof(progname));
 
 	if (len != -1)
@@ -1970,22 +1975,29 @@ main(int argc, char **argv)
 	else
 		exit(-1);
 
-	char tray_exe_path[PATH_MAX];
+	pixman_color_t *traybg_clr = &inactive_bg_color;
+	snprintf(traybg_arg,
+	         sizeof(traybg_arg),
+	         "--bg-color=#%x%x%x",
+	         (int8_t)traybg_clr->red,
+	         (int8_t)traybg_clr->green,
+	         (int8_t)traybg_clr->blue);
+
 	if (strncmp(progname, BUILD_DIR, strlen(BUILD_DIR)) == 0) {
 		strcpy(tray_exe_path, BUILD_DIR);
 		strcat(tray_exe_path, "dwlbtray");
 	} else {
 		strcpy(tray_exe_path, "dwlbtray");
 	}
+
+	snprintf(height_arg, sizeof(height_arg), "--height=%u", height);
+	snprintf(traymon_arg, sizeof(traymon_arg), "--traymon=%s", traymon);
+	char *args[] = { tray_exe_path, height_arg, traybg_arg, traymon_arg, NULL };
+	if (!traymon)
+		args[3] = NULL;
+
 	int child_pid = fork();
 	if (child_pid == 0) {
-		char height_param[64];
-		char traymon_param[64];
-		snprintf(height_param, sizeof(height_param), "--height=%u", height);
-		snprintf(traymon_param, sizeof(traymon_param), "--traymon=%s", traymon);
-		char *args[] = { tray_exe_path, height_param, traymon_param, NULL};
-		if (!traymon)
-			args[2] = NULL;
 		execvp(args[0], args);
 	}
 

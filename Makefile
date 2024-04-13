@@ -1,6 +1,5 @@
 BINS = dwlb dwlbtray
 MANS = dwlb.1
-RESOURCES = Resources/DBusMenu.xml Resources/StatusNotifierItem.xml Resources/StatusNotifierWatcher.xml Resources/boxbg.css
 
 PREFIX ?= /usr/local
 CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation -g \
@@ -17,7 +16,6 @@ clean:
 install: all
 	install -D -t $(PREFIX)/bin $(BINS)
 	install -D -m0644 -t $(PREFIX)/share/man/man1 $(MANS)
-	install -D -m0644 -t $(PREFIX)/share/dwlb $(RESOURCES)
 
 WAYLAND_PROTOCOLS=$(shell pkg-config --variable=pkgdatadir wayland-protocols)
 WAYLAND_SCANNER=$(shell pkg-config --variable=wayland_scanner wayland-scanner)

@@ -16,6 +16,8 @@ const char *RESOURCE_PATH;
 static void
 activate(GtkApplication* app, StatusNotifierHost *snhost)
 {
+	GdkDisplay *display = gdk_display_get_default();
+
 	GtkWindow *window = GTK_WINDOW(gtk_application_window_new(app));
 	snhost->window = window;
 
@@ -28,7 +30,7 @@ activate(GtkApplication* app, StatusNotifierHost *snhost)
 	}
 
 	if (snhost->traymon) {
-		GListModel *mons = gdk_display_get_monitors(gdk_display_get_default());
+		GListModel *mons = gdk_display_get_monitors(display);
 		for (uint i = 0; i < g_list_model_get_n_items(mons); i++) {
 			GdkMonitor *mon = g_list_model_get_item(mons, i);
 			const char *conn = gdk_monitor_get_connector(mon);
@@ -39,12 +41,10 @@ activate(GtkApplication* app, StatusNotifierHost *snhost)
 	}
 
 	GtkCssProvider *css = gtk_css_provider_new();
-	char *css_path = g_strdup_printf("%s%s", RESOURCE_PATH, "/boxbg.css");
-	gtk_css_provider_load_from_path(css, css_path);
-	gtk_style_context_add_provider_for_display(gdk_display_get_default(),
+	gtk_css_provider_load_from_string(css, snhost->cssdata);
+	gtk_style_context_add_provider_for_display(display,
 	                                           GTK_STYLE_PROVIDER(css),
 	                                           GTK_STYLE_PROVIDER_PRIORITY_USER);
-	g_free(css_path);
 
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
 
@@ -110,17 +110,21 @@ main(int argc, char *argv[])
 
 	StatusNotifierHost *snhost = start_statusnotifierhost();
 
+	const char *bgcolor;
 	int i = 1;
 	for (; i < argc; i++) {
-
 		char **strings = g_strsplit(argv[i], "=", 0);
 		if (strcmp(strings[0], "--height") == 0) {
 			snhost->height = atoi(strings[1]);
 		} else if (strcmp(strings[0], "--traymon") == 0) {
 			snhost->traymon = g_strdup(strings[1]);
+		} else if (strcmp(strings[0], "--bg-color") == 0) {
+			bgcolor = strdup(strings[1]);
 		}
 		g_strfreev(strings);
 	}
+
+	snhost->cssdata = g_strdup_printf("window{background-color:%s;}", bgcolor);
 
 	GtkApplication *app = gtk_application_new("com.vetu104.Gtktray",
 	                                          G_APPLICATION_DEFAULT_FLAGS);

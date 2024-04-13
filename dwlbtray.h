@@ -29,6 +29,7 @@ typedef struct StatusNotifierHost {
 	uint nameowner_sig_sub_id;
 	uint watcher_id;
 	char *traymon;
+	char *cssdata;
 } StatusNotifierHost;
 
 typedef struct StatusNotifierItem {
