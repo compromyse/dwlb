@@ -1432,6 +1432,9 @@ copy_customtext(CustomText *from, CustomText *to)
 static void
 request_resize(Bar *bar, char *data)
 {
+	if (!bar)
+		return;
+
 	uint32_t traywidth = (uint32_t)atoi(data);
 
 	bar->width = bar->width_orig - traywidth;
@@ -1586,7 +1589,12 @@ read_socket(void)
 				set_bottom(bar);
 		}
 	} else if (!strcmp(wordbeg, "resize")) {
-		request_resize(bar, wordend);
+		if (all) {
+			wl_list_for_each(bar, &bar_list, link)
+				request_resize(bar, wordend);
+		} else {
+			request_resize(bar, wordend);
+		}
 	}
 }
 
@@ -1678,6 +1686,41 @@ sig_handler(int sig)
 		run_display = false;
 }
 
+static void
+start_systray(const char *parent_progname, const char *traymon)
+{
+	char tray_exe_path[PATH_MAX];
+	char traypath_maybe[PATH_MAX];
+	char traybg_arg[64];
+	char height_arg[64];
+	char traymon_arg[64];
+
+	pixman_color_t *traybg_clr = &inactive_bg_color;
+	snprintf(traybg_arg,
+	         sizeof(traybg_arg),
+	         "--bg-color=#%02x%02x%02x",
+	         (traybg_clr->red / 0x100),
+	         (traybg_clr->green / 0x100),
+	         (traybg_clr->blue) / 0x100);
+
+	snprintf(traypath_maybe, sizeof(traypath_maybe), "%stray", parent_progname);
+	if (access(traypath_maybe, X_OK) == 0)
+		strcpy(tray_exe_path, traypath_maybe);
+	else
+		strcpy(tray_exe_path, "dwlbtray");
+
+	snprintf(height_arg, sizeof(height_arg), "--height=%u", height);
+	snprintf(traymon_arg, sizeof(traymon_arg), "--traymon=%s", traymon);
+	char *args[] = { tray_exe_path, height_arg, traybg_arg, traymon_arg, NULL };
+	if (!traymon)
+		args[3] = NULL;
+
+	int child_pid = fork();
+	if (child_pid == 0) {
+		execvp(args[0], args);
+	}
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1685,7 +1728,7 @@ main(int argc, char **argv)
 	struct sockaddr_un sock_address;
 	Bar *bar, *bar2;
 	Seat *seat, *seat2;
-	char *traymon = NULL;
+	const char *traymon = NULL;
 
 	/* Establish socket directory */
 	if (!(xdgruntimedir = getenv("XDG_RUNTIME_DIR")))
@@ -1960,40 +2003,9 @@ main(int argc, char **argv)
 	signal(SIGHUP, sig_handler);
 	signal(SIGTERM, sig_handler);
 	signal(SIGCHLD, SIG_IGN);
-	
+
 	/* Start tray program */
-	char tray_exe_path[PATH_MAX];
-	char traypath_maybe[PATH_MAX];
-	char traybg_arg[64];
-	char height_arg[64];
-	char traymon_arg[64];
-
-	pixman_color_t *traybg_clr = &inactive_bg_color;
-	snprintf(traybg_arg,
-	         sizeof(traybg_arg),
-	         "--bg-color=#%02x%02x%02x",
-	         (traybg_clr->red / 0x100),
-	         (traybg_clr->green / 0x100),
-	         (traybg_clr->blue) / 0x100);
-
-	printf("%s\n", traybg_arg);
-
-	snprintf(traypath_maybe, sizeof(traypath_maybe), "%stray", argv[0]);
-	if (access(traypath_maybe, X_OK) == 0)
-		strcpy(tray_exe_path, traypath_maybe);
-	else
-		strcpy(tray_exe_path, "dwlbtray");
-
-	snprintf(height_arg, sizeof(height_arg), "--height=%u", height);
-	snprintf(traymon_arg, sizeof(traymon_arg), "--traymon=%s", traymon);
-	char *args[] = { tray_exe_path, height_arg, traybg_arg, traymon_arg, NULL };
-	if (!traymon)
-		args[3] = NULL;
-
-	int child_pid = fork();
-	if (child_pid == 0) {
-		execvp(args[0], args);
-	}
+	start_systray(argv[0], traymon);
 
 	/* Run */
 	run_display = true;

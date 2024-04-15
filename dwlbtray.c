@@ -2,6 +2,7 @@
 #include <unistd.h>
 
 #include <glib.h>
+#include <glib-unix.h>
 #include <gtk4-layer-shell.h>
 #include <gtk/gtk.h>
 
@@ -22,6 +23,8 @@ activate(GtkApplication* app, StatusNotifierHost *snhost)
 	                                           GTK_STYLE_PROVIDER(css),
 	                                           GTK_STYLE_PROVIDER_PRIORITY_USER);
 	gtk_widget_add_css_class(GTK_WIDGET(window), "dwlbtray");
+	g_free(snhost->cssdata);
+	snhost->cssdata = NULL;
 
 
 	gtk_layer_init_for_window(window);
@@ -49,11 +52,21 @@ activate(GtkApplication* app, StatusNotifierHost *snhost)
 	gtk_widget_set_margin_start(box, snhost->margin);
 	gtk_widget_set_margin_end(box, snhost->margin);
 	gtk_window_set_child(window, box);
-	snhost->box = box;
 
 	dwlb_request_resize(snhost);
 	gtk_window_present(window);
 
+	snhost->box = box;
+	snhost->window = window;
+}
+
+
+static gboolean
+terminate_app(StatusNotifierHost *snhost)
+{
+    terminate_statusnotifierhost(snhost);
+
+    return G_SOURCE_REMOVE;
 }
 
 
@@ -90,6 +103,9 @@ main(int argc, char *argv[])
 	                                          G_APPLICATION_DEFAULT_FLAGS);
 
 	g_signal_connect(app, "activate", G_CALLBACK(activate), snhost);
+
+	g_unix_signal_add(SIGINT, (GSourceFunc)terminate_app, snhost);
+	g_unix_signal_add(SIGTERM, (GSourceFunc)terminate_app, snhost);
 
 	char *argv_inner[] = { argv[0], NULL };
 	int status = g_application_run(G_APPLICATION(app), 1, argv_inner);

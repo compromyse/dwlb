@@ -22,45 +22,59 @@ argb_to_rgba(int32_t width, int32_t height, unsigned char *icon_data)
 
 
 static void
-about_to_show_cb(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *snitem)
-{
-	GError *err = NULL;
-	GVariant *retval = g_dbus_proxy_call_finish(proxy, res, &err);
-
-	if (err) {
-		// Some apps require "AboutToShow" to be called before activating a menuitem
-		// Others do not implement this method
-		// In case of the latter we log a debug warning and continue
-		g_debug("%s\n", err->message);
-		g_error_free(err);
-	} else {
-		g_variant_unref(retval);
-	}
-
-	// Widget may be about to be destroyed
-	if (GTK_IS_WIDGET(snitem->popovermenu))
-		gtk_popover_popup(GTK_POPOVER(snitem->popovermenu));
-}
-
-
-static void
 on_leftclick_cb(GtkGestureClick *click,
                 int n_press,
                 double x,
                 double y,
                 StatusNotifierItem *snitem)
 {
-	g_dbus_proxy_call(snitem->proxy,
-			  "Activate",
-			  g_variant_new("(ii)", 0, 0),
-			  G_DBUS_CALL_FLAGS_NONE,
-			  -1,
-			  NULL,
-			  NULL,
-			  snitem);
+	if (snitem && snitem->menuproxy && !snitem->isclosing)
+		g_dbus_proxy_call(snitem->proxy,
+				  "Activate",
+				  g_variant_new("(ii)", 0, 0),
+				  G_DBUS_CALL_FLAGS_NONE,
+				  -1,
+				  NULL,
+				  NULL,
+				  NULL);
 }
 
 
+static void
+rightclick_validate(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *snitem)
+{
+	GError *err = NULL;
+	GVariant *val =  g_dbus_proxy_call_finish(proxy, res, &err);
+
+	// This error is generated when answer for the call arrives after
+	// icon was finalized.
+	if (err && g_error_matches(err, G_DBUS_ERROR, G_DBUS_ERROR_NO_REPLY)) {
+		g_error_free(err);
+		return;
+
+	// Discord generates the following error here:
+	// 'G_DBUS_ERROR' 'G_DBUS_ERROR_FAILED' 'error occurred in AboutToShow'
+	// We ignore it.
+	} else if (err && g_error_matches(err, G_DBUS_ERROR, G_DBUS_ERROR_FAILED) &&
+		   g_strrstr(err->message, "error occured in AboutToShow") == 0) {
+		g_error_free(err);
+
+		if (snitem && snitem->icon && GTK_IS_WIDGET(snitem->icon) &&
+		    snitem->popovermenu && GTK_IS_WIDGET(snitem->popovermenu))
+			gtk_popover_popup(GTK_POPOVER(snitem->popovermenu));
+
+	// Report rest of possible errors
+	} else if (err) {
+		g_warning("%sfrom on_rightclick_cb\n", err->message);
+		g_error_free(err);
+
+	} else {
+		g_variant_unref(val);
+		if (snitem && snitem->icon && GTK_IS_WIDGET(snitem->icon) &&
+		    snitem->popovermenu && GTK_IS_WIDGET(snitem->popovermenu))
+			gtk_popover_popup(GTK_POPOVER(snitem->popovermenu));
+	}
+}
 
 
 static void
@@ -70,14 +84,20 @@ on_rightclick_cb(GtkGestureClick *click,
                  double y,
                  StatusNotifierItem *snitem)
 {
-	g_dbus_proxy_call(snitem->menuproxy,
-	                  "AboutToShow",
-	                  g_variant_new("(i)", 0),
-	                  G_DBUS_CALL_FLAGS_NONE,
-	                  -1,
-	                  NULL,
-	                  (GAsyncReadyCallback)about_to_show_cb,
-	                  snitem);
+	if (snitem && snitem->menuproxy && !snitem->isclosing) {
+		if (snitem && snitem->icon && GTK_IS_WIDGET(snitem->icon) &&
+		    snitem->popovermenu && GTK_IS_WIDGET(snitem->popovermenu))
+			gtk_popover_popdown(GTK_POPOVER(snitem->popovermenu));
+
+		g_dbus_proxy_call(snitem->menuproxy,
+		                  "AboutToShow",
+		                  g_variant_new("(i)", 0),
+		                  G_DBUS_CALL_FLAGS_NONE,
+		                  -1,
+		                  NULL,
+		                  (GAsyncReadyCallback)rightclick_validate,
+		                  snitem);
+	}
 }
 
 
@@ -200,8 +220,12 @@ new_iconname_handler(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *s
 	GVariant *data = g_dbus_proxy_call_finish(proxy, res, &err);
 	// (v)
 
-	if (err) {
-		g_debug("%s\n", err->message);
+	if (err && g_error_matches(err, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT)) {
+		g_error_free(err);
+		return;
+	} else if (err) {
+		g_warning("%s\n", err->message);
+		fprintf(stderr, "from new_iconname_handler\n");
 		g_error_free(err);
 		return;
 	}
@@ -213,7 +237,7 @@ new_iconname_handler(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *s
 	g_variant_unref(iconname_v);
 
 	if (strcmp(iconname, snitem->iconname) == 0) {
-		g_debug("%s\n", "pixmap didnt change, nothing to");
+		// g_debug("%s got NewIcon, but iconname didn't change. Ignoring\n", snitem->busname);
 		g_variant_unref(data);
 		return;
 	}
@@ -236,8 +260,12 @@ new_iconpixmap_handler(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem 
 	GVariant *data = g_dbus_proxy_call_finish(proxy, res, &err);
 	// (v)
 
-	if (err) {
-		g_debug("%s\n", err->message);
+	if (err && g_error_matches(err, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT)) {
+		g_error_free(err);
+		return;
+	} else if (err) {
+		g_warning("%s\n", err->message);
+		fprintf(stderr, "from new_iconpixmap_handler\n");
 		g_error_free(err);
 		return;
 	}
@@ -247,7 +275,7 @@ new_iconpixmap_handler(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem 
 	g_variant_unref(data);
 
 	if (g_variant_equal(newpixmap_v, snitem->iconpixmap_v)) {
-		g_debug ("%s\n", "iconname didnt change, nothing to");
+		// g_debug ("%s got NewIcon, but iconpixmap didn't change. Ignoring\n", snitem->busname);
 		g_variant_unref(newpixmap_v);
 		return;
 	}
@@ -267,7 +295,6 @@ trayitem_signal_handler(GDBusProxy *proxy,
                         GVariant *data_v,
                         StatusNotifierItem *snitem)
 {
-	// TODO: this can fire many times in a short amount of time
 	if (strcmp(signal, "NewIcon") == 0) {
 		if (snitem->iconpixmap_v)
 			g_dbus_proxy_call(proxy,
@@ -330,78 +357,106 @@ create_icon(GDBusProxy *proxy, StatusNotifierItem *snitem)
 
 
 void
-create_trayitem(GDBusConnection *conn, GAsyncResult *res, StatusNotifierItem *snitem)
+create_trayitem(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 {
 	GError *err = NULL;
-	snitem->proxy = g_dbus_proxy_new_finish(res, &err);
+	GDBusProxy *proxy = g_dbus_proxy_new_finish(res, &err);
 
 	if (err) {
-		fprintf(stderr, "%s\n", err->message);
+		g_error("%s\n", err->message);
 		g_error_free(err);
+	}
+
+	// If this happens for whatever reason, we lose track of
+	// our window size (there will be a gap between systray and bar)
+	if (!snitem && proxy) {
+		g_object_unref(proxy);
+		return;
+	} else if (!snitem) {
 		return;
 	}
 
-	GtkIconTheme *theme = gtk_icon_theme_get_for_display(gdk_display_get_default ());
-	GVariant *iconthemepath_v = g_dbus_proxy_get_cached_property(snitem->proxy, "IconThemePath");
+	snitem->proxy = proxy;
 
+	GVariant *iconthemepath_v;
+	const char *iconthemepath;
+	GtkIconTheme *theme;
+	GtkGesture *leftclick;
+	GtkGesture *rightclick;
+	GVariant *menu_buspath_v;
+	const char *menu_buspath;
+	GSimpleActionGroup *actiongroup;
+	GtkWidget *icon;
+
+	/*
+	 * const char *valid_menupaths[] = {
+	 * 	"/MenuBar",
+	 * 	"/com/canonical/dbusmenu",
+	 * 	"/org/ayatana/NotificationItem",
+	 * 	NULL
+	 * };
+	 */
+
+	g_signal_connect(proxy, "g-signal", G_CALLBACK(trayitem_signal_handler), snitem);
+
+	iconthemepath_v = g_dbus_proxy_get_cached_property(proxy, "IconThemePath");
+	theme = gtk_icon_theme_get_for_display(gdk_display_get_default());
 	if (iconthemepath_v) {
-		const char *path = g_variant_get_string(iconthemepath_v, NULL);
-		gtk_icon_theme_add_search_path(theme, path);
+		g_variant_get(iconthemepath_v, "&s", &iconthemepath);
+		gtk_icon_theme_add_search_path(theme, iconthemepath);
 		g_variant_unref(iconthemepath_v);
 	}
 
-	GtkGesture *leftclick = gtk_gesture_click_new();
+	icon = create_icon(proxy, snitem);
+
+	leftclick = gtk_gesture_click_new();
 	gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(leftclick), 1);
 	g_signal_connect(leftclick, "pressed", G_CALLBACK(on_leftclick_cb), snitem);
 
-	GtkGesture *rightclick = gtk_gesture_click_new();
+	rightclick = gtk_gesture_click_new();
 	gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(rightclick), 3);
 	g_signal_connect(rightclick, "pressed", G_CALLBACK(on_rightclick_cb), snitem);
 
-	const char *valid_menuobjects[] = {
-		"/MenuBar",
-		"/com/canonical/dbusmenu",
-		"/org/ayatana/NotificationItem",
-		NULL
-	};
-
-	GVariant *menuobj_v = g_dbus_proxy_get_cached_property(snitem->proxy, "Menu");
-	if (menuobj_v) {
-		snitem->menuobj = g_strdup(g_variant_get_string(menuobj_v, NULL));
-		g_variant_unref(menuobj_v);
-	} else {
-		snitem->menuobj = g_strdup("Invalid_menuobj");
+	actiongroup = g_simple_action_group_new();
+	if (snitem && icon && GTK_IS_WIDGET(icon)) {
+		gtk_widget_insert_action_group(icon,
+					       "menuitem",
+					       G_ACTION_GROUP(actiongroup));
 	}
-	snitem->actiongroup = g_simple_action_group_new();
+	snitem->actiongroup = actiongroup;
 
-	snitem->menunodeinfo = g_dbus_node_info_new_for_xml(DBUSMENU_XML, NULL);
+	menu_buspath_v = g_dbus_proxy_get_cached_property(proxy, "Menu");
+	if (menu_buspath_v)
+		g_variant_get(menu_buspath_v, "&o", &menu_buspath);
+	else
+		menu_buspath = NULL;
 
-	g_signal_connect(snitem->proxy, "g-signal", G_CALLBACK(trayitem_signal_handler), snitem);
+	// for (int i = 0; valid_menupaths[i]; i++) {
+		// if (menu_buspath && g_strrstr(menu_buspath, valid_menupaths[i]) == 0) {
+	if (menu_buspath) {
+		GDBusNodeInfo *nodeinfo = g_dbus_node_info_new_for_xml(DBUSMENU_XML, NULL);
+		g_dbus_proxy_new_for_bus(G_BUS_TYPE_SESSION,
+		                         G_DBUS_PROXY_FLAGS_NONE,
+		                         nodeinfo->interfaces[0],
+		                         snitem->busname,
+		                         menu_buspath,
+		                         "com.canonical.dbusmenu",
+		                         NULL,
+		                         (GAsyncReadyCallback)create_menu,
+		                         snitem);
+		g_dbus_node_info_unref(nodeinfo);
+	}
+		// }
+	// }
 
-	for (int i = 0; valid_menuobjects[i] != NULL; i++) {
-		if (g_strrstr(snitem->menuobj, valid_menuobjects[i]) != NULL) {
-			g_dbus_proxy_new_for_bus(G_BUS_TYPE_SESSION,
-			                         G_DBUS_PROXY_FLAGS_NONE,
-			                         snitem->menunodeinfo->interfaces[0],
-			                         snitem->busname,
-			                         snitem->menuobj,
-			                         "com.canonical.dbusmenu",
-			                         NULL,
-			                         (GAsyncReadyCallback)create_menu,
-			                         snitem);
-		}
+	if (icon) {
+		gtk_widget_add_controller(icon, GTK_EVENT_CONTROLLER(leftclick));
+		gtk_widget_add_controller(icon, GTK_EVENT_CONTROLLER(rightclick));
+		gtk_box_append(GTK_BOX(snitem->host->box), icon);
+		snitem->icon = icon;
 	}
 
-	GtkWidget *image = create_icon(snitem->proxy, snitem);
-	if (!image)
-		return;
 
-	snitem->icon = image;
-	gtk_box_append(GTK_BOX(snitem->host->box), snitem->icon);
-
-	gtk_widget_add_controller(snitem->icon, GTK_EVENT_CONTROLLER(leftclick));
-	gtk_widget_add_controller(snitem->icon, GTK_EVENT_CONTROLLER(rightclick));
-	gtk_widget_insert_action_group(snitem->icon,
-	                               "menuitem",
-	                               G_ACTION_GROUP (snitem->actiongroup));
+	if (menu_buspath_v)
+		g_variant_unref(menu_buspath_v);
 }

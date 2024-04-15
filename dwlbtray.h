@@ -13,29 +13,24 @@ typedef struct {
 
 typedef struct StatusNotifierHost {
 	GDBusConnection *conn;
-	GDBusNodeInfo *nodeinfo;
-	GDBusProxy *watcherproxy;
 	GSList *trayitems;
 	GtkWidget *box;
 	GtkWindow *window;
-	int bus_obj_reg_id;
-	int cursize;
+	char *cssdata;
+	char *traymon;
+	int curwidth;
 	int height;
 	int margin;
 	int noitems;
+	int obj_id;
 	int owner_id;
-	uint nameowner_sig_sub_id;
-	uint watcher_id;
-	char *traymon;
-	char *cssdata;
+	int sub_id;
 } StatusNotifierHost;
 
+
 typedef struct StatusNotifierItem {
-	GDBusNodeInfo *menunodeinfo;
-	GDBusNodeInfo *nodeinfo;
 	GDBusProxy *menuproxy;
 	GDBusProxy *proxy;
-	GMenu *menu;
 	GSList *action_cb_data_slist;
 	GSimpleActionGroup *actiongroup;
 	GVariant *iconpixmap_v;
@@ -44,20 +39,17 @@ typedef struct StatusNotifierItem {
 	GtkWidget *popovermenu;
 	StatusNotifierHost *host;
 	char *busname;
-	char *busobj;
 	char *iconname;
-	char *menuobj;
+	gboolean isclosing;
 	uint32_t menurevision;
-	unsigned char *icon_data;
 } StatusNotifierItem;
 
 
-void create_trayitem(GDBusConnection *conn, GAsyncResult *res, StatusNotifierItem *snitem);
-void create_menu(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *snitem);
+void create_trayitem(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem);
+void create_menu(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem);
 StatusNotifierHost* start_statusnotifierhost();
-// void terminate_statusnotifierhost(StatusNotifierHost *snhost);
-GDBusNodeInfo* get_interface_info(const char *xmlpath);
 void dwlb_request_resize(StatusNotifierHost *snhost);
+void terminate_statusnotifierhost(StatusNotifierHost *snhost);
 
 
 #define DBUSMENU_XML	\
@@ -210,4 +202,4 @@ void dwlb_request_resize(StatusNotifierHost *snhost);
 	"    </interface>\n"	\
 	"</node>\n"
 
-#endif /* STATUSNOTIFIERHOST_H */
+#endif /* GTKTRAY_H */

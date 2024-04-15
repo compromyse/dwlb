@@ -9,14 +9,15 @@
 
 #include "dwlbtray.h"
 
-
+static void unregister_all(StatusNotifierHost *snhost);
+static void sub_finalize(StatusNotifierHost *snhost);
+static void busobj_finalize(StatusNotifierHost *snhost);
+static void unregister_statusnotifieritem(StatusNotifierItem *snitem);
 static void handle_method_call(GDBusConnection* conn, const char* sender,
 		const char* object_path, const char* iface, const char* method,
 		GVariant* parameters, GDBusMethodInvocation* invocation,
 		StatusNotifierHost* snhost
 );
-
-
 static GVariant* handle_get_prop(GDBusConnection* conn, const char* sender,
 		const char* obj_path, const char* iface_name,
 		const char* prop, GError** error, StatusNotifierHost* snhost
@@ -30,13 +31,44 @@ static GDBusInterfaceVTable interface_vtable = {
 };
 
 
+static void
+add_trayitem_name_to_builder(StatusNotifierItem *snitem, GVariantBuilder *builder)
+{
+	g_variant_builder_add_value(builder, g_variant_new_string(snitem->busname));
+}
+
+
+static int
+find_snitem(StatusNotifierItem *snitem, const char *busname_match)
+{
+	if (strcmp(snitem->busname, busname_match) == 0)
+		return 0;
+	else
+		return -1;
+}
+
+
+static void
+unregister_all_wrap(StatusNotifierItem *snitem, void *data)
+{
+	unregister_statusnotifieritem(snitem);
+}
+
+
+static void
+unregister_all(StatusNotifierHost *snhost)
+{
+    g_slist_foreach(snhost->trayitems, (GFunc)unregister_all_wrap, NULL);
+}
+
+
 void
 dwlb_request_resize(StatusNotifierHost *snhost)
 {
 	if (snhost->noitems <= 1)
-		snhost->cursize = 22;
+		snhost->curwidth = 22;
 	else
-		snhost->cursize = 22 * snhost->noitems - 6; // dunno why substract 6 to make it align, just trial and error until it worked
+		snhost->curwidth = 22 * snhost->noitems - 6; // dunno why substract 6 to make it align, just trial and error until it worked
 
 	struct sockaddr_un sockaddr;
 	sockaddr.sun_family = AF_UNIX;
@@ -44,10 +76,10 @@ dwlb_request_resize(StatusNotifierHost *snhost)
 	snprintf(sockaddr.sun_path, sizeof(sockaddr.sun_path), "%s", socketpath);
 	char *sockbuf = NULL;
 	if (snhost->traymon) {
-		sockbuf = g_strdup_printf("%s %s %i", snhost->traymon, "resize", snhost->cursize);
+		sockbuf = g_strdup_printf("%s %s %i", snhost->traymon, "resize", snhost->curwidth);
 	}
 	else {
-		sockbuf = g_strdup_printf("%s %s %i", "selected", "resize", snhost->cursize);
+		sockbuf = g_strdup_printf("%s %s %i", "all", "resize", snhost->curwidth);
 	}
 
 	size_t len = strlen(sockbuf);
@@ -59,45 +91,47 @@ dwlb_request_resize(StatusNotifierHost *snhost)
 	}
 
 	if (send(sock_fd, sockbuf, len, 0) == -1)
-		fprintf(stderr, "Could not send size update to %s\n", sockaddr.sun_path);
+		g_error("Could not send size update to %s\n", sockaddr.sun_path);
 	close(sock_fd);
 
-	g_free(sockbuf);
 	g_free(socketpath);
+	g_free(sockbuf);
 }
 
 
 static void
-register_statusnotifieritem(const char *busname,
+register_statusnotifieritem(GDBusConnection *conn,
+                            const char *busname,
                             const char *busobj,
                             StatusNotifierHost *snhost)
 {
+	g_debug("Registering %s\n", busname);
 	StatusNotifierItem *snitem;
 	snitem = g_malloc0(sizeof(StatusNotifierItem));
-
 	snitem->host = snhost;
 	snitem->busname = g_strdup(busname);
-	snitem->busobj = g_strdup(busobj);
-	snitem->nodeinfo = g_dbus_node_info_new_for_xml(STATUSNOTIFIERITEM_XML, NULL);
+	snitem->isclosing = FALSE;
+	snitem->host->noitems = snitem->host->noitems + 1;
 
-	snhost->noitems = snhost->noitems + 1;
 	snhost->trayitems = g_slist_prepend(snhost->trayitems, snitem);
+	dwlb_request_resize(snitem->host);
 
-	// g_free(xml_path);
-	dwlb_request_resize(snhost);
+	GDBusNodeInfo *nodeinfo = g_dbus_node_info_new_for_xml(STATUSNOTIFIERITEM_XML, NULL);
 
-	g_dbus_proxy_new(snhost->conn,
+	g_dbus_proxy_new(conn,
                          G_DBUS_PROXY_FLAGS_NONE,
-                         snitem->nodeinfo->interfaces[0],
+                         nodeinfo->interfaces[0],
                          snitem->busname,
-                         snitem->busobj,
+                         busobj,
                          "org.kde.StatusNotifierItem",
-                         NULL,
+			 NULL,
                          (GAsyncReadyCallback)create_trayitem,
                          snitem);
 
+	g_dbus_node_info_unref(nodeinfo);
+
 	GError *err = NULL;
-	g_dbus_connection_emit_signal(snhost->conn,
+	g_dbus_connection_emit_signal(conn,
 	                              NULL,
 	                              "/StatusNotifierWatcher",
 	                              "org.kde.StatusNotifierWatcher",
@@ -105,34 +139,36 @@ register_statusnotifieritem(const char *busname,
 	                              g_variant_new("(s)", snitem->busname),
 	                              &err);
 	if (err) {
-		g_debug("%s\n", err->message);
+		g_warning("%s\n", err->message);
+		fprintf(stderr, "from register_statusnotifieritem\n");
 		g_error_free(err);
 	}
 }
 
 
-static int
-find_snitem(StatusNotifierItem *snitem, char *busname_match)
-{
-	if (strcmp(snitem->busname, busname_match) == 0)
-		return 0;
-	else
-		return -1;
-}
-
-
 static void
-unregister_statusnotifieritem(StatusNotifierItem *snitem, StatusNotifierHost *snhost)
+unregister_statusnotifieritem(StatusNotifierItem *snitem)
 {
-	g_debug("item %s is closing\n", snitem->busname);
-	if (snitem->popovermenu)
+	g_debug("Unregistering %s\n", snitem->busname);
+	if (snitem->popovermenu) {
+		gtk_popover_menu_set_menu_model(GTK_POPOVER_MENU(snitem->popovermenu), NULL);
 		gtk_widget_unparent(snitem->popovermenu);
 
-	if (snitem->icon)
-		gtk_box_remove(GTK_BOX(snhost->box), snitem->icon);
+		snitem->popovermenu = NULL;
+	}
+
+	if (snitem->icon) {
+		// TODO: Why do we still have children left???
+		GtkWidget *test;
+		while ((test = gtk_widget_get_first_child(snitem->icon))) {
+			gtk_widget_unparent(test);
+		}
+		gtk_box_remove(GTK_BOX(snitem->host->box), snitem->icon);
+		snitem->icon = NULL;
+	}
 
 	GError *err = NULL;
-	g_dbus_connection_emit_signal(snhost->conn,
+	g_dbus_connection_emit_signal(snitem->host->conn,
                                       NULL,
 	                              "/StatusNotifierWatcher",
 	                              "org.kde.StatusNotifierWatcher",
@@ -140,17 +176,15 @@ unregister_statusnotifieritem(StatusNotifierItem *snitem, StatusNotifierHost *sn
 	                              g_variant_new("(s)", snitem->busname),
 	                              &err);
 	if (err) {
-		g_debug("%s\n", err->message);
+		g_warning("%s\n", err->message);
+		fprintf(stderr, "from unregister_statusnotifieritem\n");
 		g_error_free(err);
 	}
 
-	if (snitem->menu) {
+	if (snitem->menuproxy)
 		g_object_unref(snitem->menuproxy);
+	if (snitem->action_cb_data_slist)
 		g_slist_free_full(snitem->action_cb_data_slist, g_free);
-		g_object_unref(snitem->menu);
-	}
-	if (snitem->menunodeinfo)
-		g_dbus_node_info_unref(snitem->menunodeinfo);
 
 	if (snitem->paintable) {
 		g_object_unref(snitem->paintable);
@@ -160,19 +194,15 @@ unregister_statusnotifieritem(StatusNotifierItem *snitem, StatusNotifierHost *sn
 			g_free(snitem->iconname);
 	}
 
-	g_object_unref(snitem->proxy);
-	g_dbus_node_info_unref(snitem->nodeinfo);
 	g_object_unref(snitem->actiongroup);
 	g_free(snitem->busname);
-	g_free(snitem->busobj);
-	g_free(snitem->menuobj);
-	snhost->trayitems = g_slist_remove(snhost->trayitems, snitem);
 
+	snitem->host->trayitems = g_slist_remove(snitem->host->trayitems, snitem);
+	snitem->host->noitems = snitem->host->noitems - 1;
+	dwlb_request_resize(snitem->host);
 	g_free(snitem);
 	snitem = NULL;
 
-	snhost->noitems = snhost->noitems - 1;
-	dwlb_request_resize(snhost);
 }
 
 
@@ -187,10 +217,10 @@ handle_method_call(GDBusConnection *conn,
                    StatusNotifierHost *snhost)
 {
 	if (strcmp(method_name, "RegisterStatusNotifierItem") == 0) {
-		char *param;
+		const char *param;
 		const char *busobj;
 
-		g_variant_get(parameters, "(s)", &param);
+		g_variant_get(parameters, "(&s)", &param);
 
 		if (g_str_has_prefix(param, "/")) {
 			busobj = param;
@@ -198,9 +228,9 @@ handle_method_call(GDBusConnection *conn,
 			busobj = "/StatusNotifierItem";
 		}
 
-		register_statusnotifieritem(sender, busobj, snhost);
+		register_statusnotifieritem(conn, sender, busobj, snhost);
 		g_dbus_method_invocation_return_value(invocation, NULL);
-		g_free(param);
+
 	} else {
 		g_dbus_method_invocation_return_dbus_error(invocation,
                                                            "org.freedesktop.DBus.Error.UnknownMethod",
@@ -208,12 +238,6 @@ handle_method_call(GDBusConnection *conn,
 	}
 }
 
-
-static void
-add_trayitem_name_to_builder(StatusNotifierItem *snitem, GVariantBuilder *builder)
-{
-	g_variant_builder_add_value(builder, g_variant_new_string(snitem->busname));
-}
 
 static GVariant*
 handle_get_prop(GDBusConnection* conn,
@@ -250,6 +274,14 @@ handle_get_prop(GDBusConnection* conn,
 	}
 }
 
+// ugly
+static gboolean
+unregister_after_timeout(StatusNotifierItem *snitem)
+{
+	unregister_statusnotifieritem(snitem);
+	return G_SOURCE_REMOVE;
+}
+
 
 // Finds trayitems which dropped from the bus and untracks them
 static void
@@ -265,29 +297,21 @@ monitor_bus(GDBusConnection* conn,
 		if (!snhost->trayitems)
 			return;
 
-		char *name;
-		char *old_owner;
-		char *new_owner;
+		const char *name;
+		const char *old_owner;
+		const char *new_owner;
 
-		g_variant_get(params, "(sss)", &name, &old_owner, &new_owner);
+		g_variant_get(params, "(&s&s&s)", &name, &old_owner, &new_owner);
 
 		if (strcmp(new_owner, "") == 0) {
 			GSList *pmatch = g_slist_find_custom(snhost->trayitems, name, (GCompareFunc)find_snitem);
-
-
-			if (!pmatch) {
-				g_free(name);
-				g_free(old_owner);
-				g_free(new_owner);
-				return;
+			if (pmatch) {
+				StatusNotifierItem *snitem = pmatch->data;
+				snitem->isclosing = TRUE;
+				// ugly
+				g_timeout_add_seconds(2, (GSourceFunc)unregister_after_timeout, snitem);
 			}
-
-			StatusNotifierItem *snitem = pmatch->data;
-			unregister_statusnotifieritem(snitem, snhost);
 		}
-		g_free(name);
-		g_free(old_owner);
-		g_free(new_owner);
 	}
 }
 
@@ -295,15 +319,18 @@ monitor_bus(GDBusConnection* conn,
 static void
 bus_acquired_handler(GDBusConnection *conn, const char *busname, StatusNotifierHost *snhost)
 {
-	snhost->conn = conn;
 	GError *err = NULL;
-	snhost->bus_obj_reg_id = g_dbus_connection_register_object(conn,
-                                                                   "/StatusNotifierWatcher",
-                                                                   snhost->nodeinfo->interfaces[0],
-                                                                   &interface_vtable,
-                                                                   snhost,  // udata
-                                                                   NULL,  // udata_free_func
-                                                                   &err);
+	GDBusNodeInfo *nodeinfo = g_dbus_node_info_new_for_xml(STATUSNOTIFIERWATCHER_XML, NULL);
+
+	snhost->obj_id = g_dbus_connection_register_object(conn,
+                                                           "/StatusNotifierWatcher",
+                                                           nodeinfo->interfaces[0],
+                                                           &interface_vtable,
+                                                           snhost,  // udata
+                                                           (GDestroyNotify)busobj_finalize,  // udata_free_func
+                                                           &err);
+
+	g_dbus_node_info_unref(nodeinfo);
 
 	if (err) {
 		g_error("%s\n", err->message);
@@ -311,16 +338,16 @@ bus_acquired_handler(GDBusConnection *conn, const char *busname, StatusNotifierH
 		exit(-1);
 	}
 
-	snhost->nameowner_sig_sub_id = g_dbus_connection_signal_subscribe(conn,
-                                                                          NULL,  // Listen to all senders);
-                                                                          "org.freedesktop.DBus",
-	                                                                  "NameOwnerChanged",
-	                                                                  NULL,  // Match all obj paths
-	                                                                  NULL,  // Match all arg0s
-	                                                                  G_DBUS_SIGNAL_FLAGS_NONE,
-	                                                                  (GDBusSignalCallback)monitor_bus,
-	                                                                  snhost,  // udata
-	                                                                  NULL);  // udata free func
+	snhost->sub_id = g_dbus_connection_signal_subscribe(conn,
+                                                            NULL,  // Listen to all senders);
+                                                            "org.freedesktop.DBus",
+	                                                    "NameOwnerChanged",
+	                                                    NULL,  // Match all obj paths
+	                                                    NULL,  // Match all arg0s
+	                                                    G_DBUS_SIGNAL_FLAGS_NONE,
+	                                                    (GDBusSignalCallback)monitor_bus,
+	                                                    snhost,
+	                                                    (GDestroyNotify)sub_finalize);
 }
 
 
@@ -328,6 +355,7 @@ static void
 name_acquired_handler(GDBusConnection *conn, const char *busname, StatusNotifierHost *snhost)
 {
 	GError *err = NULL;
+	snhost->conn = conn;
 
 	g_dbus_connection_emit_signal(conn,
                                       NULL,
@@ -338,7 +366,8 @@ name_acquired_handler(GDBusConnection *conn, const char *busname, StatusNotifier
                                       &err);
 
 	if (err) {
-		g_debug("%s\n", err->message);
+		g_warning("%s\n", err->message);
+		fprintf(stderr, "from name_acquired_handler\n");
 		g_error_free(err);
 	}
 }
@@ -352,11 +381,42 @@ name_lost_handler(GDBusConnection *conn, const char *busname, StatusNotifierHost
 }
 
 
+static void
+snhost_finalize(StatusNotifierHost *snhost)
+{
+	gtk_window_close(snhost->window);
+	g_free(snhost);
+	snhost = NULL;
+}
+
+
+static void
+busobj_finalize(StatusNotifierHost *snhost)
+{
+	unregister_all(snhost);
+	g_slist_free(snhost->trayitems);
+	g_bus_unown_name(snhost->owner_id);
+}
+
+
+static void
+sub_finalize(StatusNotifierHost *snhost)
+{
+	g_dbus_connection_unregister_object(snhost->conn, snhost->obj_id);
+}
+
+
+void
+terminate_statusnotifierhost(StatusNotifierHost *snhost)
+{
+	g_dbus_connection_signal_unsubscribe(snhost->conn, snhost->sub_id);
+}
+
+
 StatusNotifierHost*
 start_statusnotifierhost()
 {
 	StatusNotifierHost *snhost = g_malloc0(sizeof(StatusNotifierHost));
-	snhost->nodeinfo = g_dbus_node_info_new_for_xml(STATUSNOTIFIERWATCHER_XML, NULL);
 
 	snhost->height = 22;
 	snhost->margin = 4;
@@ -369,7 +429,7 @@ start_statusnotifierhost()
                                           (GBusNameAcquiredCallback)name_acquired_handler,
                                           (GBusNameLostCallback)name_lost_handler,
                                           snhost,
-                                          NULL); // (GDestroyNotify)snhost_finalize);
+                                          (GDestroyNotify)snhost_finalize);
 
 	return snhost;
 }
