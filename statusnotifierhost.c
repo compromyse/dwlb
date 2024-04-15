@@ -65,7 +65,9 @@ unregister_all(StatusNotifierHost *snhost)
 void
 dwlb_request_resize(StatusNotifierHost *snhost)
 {
-	if (snhost->noitems <= 1)
+	if (snhost->in_exit)
+		snhost->curwidth = 0;
+	else if (snhost->noitems <= 1)
 		snhost->curwidth = 22;
 	else
 		snhost->curwidth = 22 * snhost->noitems - 6; // dunno why substract 6 to make it align, just trial and error until it worked
@@ -153,36 +155,28 @@ unregister_statusnotifieritem(StatusNotifierItem *snitem)
 	if (snitem->popovermenu) {
 		gtk_popover_menu_set_menu_model(GTK_POPOVER_MENU(snitem->popovermenu), NULL);
 		gtk_widget_unparent(snitem->popovermenu);
-
 		snitem->popovermenu = NULL;
 	}
 
 	if (snitem->icon) {
-		// TODO: Why do we still have children left???
-		GtkWidget *test;
-		while ((test = gtk_widget_get_first_child(snitem->icon))) {
-			gtk_widget_unparent(test);
-		}
+		gtk_widget_insert_action_group(snitem->icon, "menuitem", NULL);
+		g_object_unref(snitem->actiongroup);
 		gtk_box_remove(GTK_BOX(snitem->host->box), snitem->icon);
 		snitem->icon = NULL;
 	}
 
-	GError *err = NULL;
 	g_dbus_connection_emit_signal(snitem->host->conn,
                                       NULL,
 	                              "/StatusNotifierWatcher",
 	                              "org.kde.StatusNotifierWatcher",
 	                              "StatusNotifierItemUnregistered",
 	                              g_variant_new("(s)", snitem->busname),
-	                              &err);
-	if (err) {
-		g_warning("%s\n", err->message);
-		fprintf(stderr, "from unregister_statusnotifieritem\n");
-		g_error_free(err);
-	}
+	                              NULL);
 
 	if (snitem->menuproxy)
 		g_object_unref(snitem->menuproxy);
+	if (snitem->proxy)
+		g_object_unref(snitem->proxy);
 	if (snitem->action_cb_data_slist)
 		g_slist_free_full(snitem->action_cb_data_slist, g_free);
 
@@ -194,7 +188,6 @@ unregister_statusnotifieritem(StatusNotifierItem *snitem)
 			g_free(snitem->iconname);
 	}
 
-	g_object_unref(snitem->actiongroup);
 	g_free(snitem->busname);
 
 	snitem->host->trayitems = g_slist_remove(snitem->host->trayitems, snitem);
@@ -366,8 +359,7 @@ name_acquired_handler(GDBusConnection *conn, const char *busname, StatusNotifier
                                       &err);
 
 	if (err) {
-		g_warning("%s\n", err->message);
-		fprintf(stderr, "from name_acquired_handler\n");
+		g_warning("%s\nfrom name_acquired_handler", err->message);
 		g_error_free(err);
 	}
 }
@@ -384,6 +376,8 @@ name_lost_handler(GDBusConnection *conn, const char *busname, StatusNotifierHost
 static void
 snhost_finalize(StatusNotifierHost *snhost)
 {
+	snhost->in_exit = TRUE;
+	dwlb_request_resize(snhost);
 	gtk_window_close(snhost->window);
 	g_free(snhost);
 	snhost = NULL;

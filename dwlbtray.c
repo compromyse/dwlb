@@ -99,7 +99,7 @@ main(int argc, char *argv[])
 	snhost->cssdata = cssdata;
 	g_free(bgcolor);
 
-	GtkApplication *app = gtk_application_new("com.vetu104.Gtktray",
+	GtkApplication *app = gtk_application_new("org.dwlb.dwlbtray",
 	                                          G_APPLICATION_DEFAULT_FLAGS);
 
 	g_signal_connect(app, "activate", G_CALLBACK(activate), snhost);

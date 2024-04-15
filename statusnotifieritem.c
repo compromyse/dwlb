@@ -109,7 +109,7 @@ pb_destroy(unsigned char *pixeld, void *data)
 
 
 static GVariant*
-select_icon_by_size(GVariant *icondata_v)
+select_icon_by_size(GVariant *icondata_v, int target_size)
 {
 	// Apps broadcast icons as variant a(iiay)
 	// Meaning array of tuples, tuple representing an icon
@@ -119,7 +119,7 @@ select_icon_by_size(GVariant *icondata_v)
 	GVariantIter iter;
 	int selected_index = 0;
 	int current_index = 0;
-	int32_t target_icon_size = 22;
+	int32_t target_icon_size = (int32_t)target_size;
 	int32_t diff = INT32_MAX;
 	GVariant *child;
 	g_variant_iter_init(&iter, icondata_v);
@@ -147,11 +147,11 @@ select_icon_by_size(GVariant *icondata_v)
 
 
 static GdkPaintable*
-get_paintable_from_data(GVariant *icondata_v)
+get_paintable_from_data(GVariant *icondata_v, int target_size)
 {
 	GdkPaintable *paintable;
 	GVariantIter iter;
-	GVariant *iconpixmap_v = select_icon_by_size(icondata_v);
+	GVariant *iconpixmap_v = select_icon_by_size(icondata_v, target_size);
 
 	int32_t width;
 	int32_t height;
@@ -194,7 +194,7 @@ get_paintable_from_data(GVariant *icondata_v)
 
 
 static GdkPaintable*
-get_paintable_from_name(const char *iconname)
+get_paintable_from_name(const char *iconname, int target_size)
 {
 	GdkPaintable *paintable = NULL;
 	GtkIconPaintable *icon;
@@ -203,7 +203,7 @@ get_paintable_from_name(const char *iconname)
 	icon = gtk_icon_theme_lookup_icon(theme,
 	                                  iconname,
 	                                  NULL,  // const char **fallbacks
-	                                  22,
+	                                  target_size,
 	                                  1,
 	                                  GTK_TEXT_DIR_LTR,
 	                                  0);  // GtkIconLookupFlags
@@ -246,7 +246,7 @@ new_iconname_handler(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *s
 	g_object_unref(snitem->paintable);
 
 	snitem->iconname = g_strdup(iconname);
-	snitem->paintable = get_paintable_from_name(snitem->iconname);
+	snitem->paintable = get_paintable_from_name(snitem->iconname, snitem->host->height);
 	gtk_image_set_from_paintable(GTK_IMAGE(snitem->icon), snitem->paintable);
 
 	g_variant_unref(data);
@@ -283,8 +283,10 @@ new_iconpixmap_handler(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem 
 	g_object_unref(snitem->paintable);
 	g_variant_unref(snitem->iconpixmap_v);
 	snitem->iconpixmap_v = newpixmap_v;
-	snitem->paintable = get_paintable_from_data(snitem->iconpixmap_v);
-	gtk_image_set_from_paintable(GTK_IMAGE (snitem->icon), snitem->paintable);
+	GdkPaintable *paintable = get_paintable_from_data(snitem->iconpixmap_v,
+	                                                  snitem->host->height);
+	gtk_image_set_from_paintable(GTK_IMAGE (snitem->icon), paintable);
+	snitem->paintable = paintable;
 }
 
 
@@ -335,7 +337,7 @@ create_icon(GDBusProxy *proxy, StatusNotifierItem *snitem)
 	}
 
 	if (iconname && strcmp(iconname, "") != 0) {
-		paintable = get_paintable_from_name(iconname);
+		paintable = get_paintable_from_name(iconname, snitem->host->height);
 
 		snitem->iconname = g_strdup(iconname);
 
@@ -343,7 +345,7 @@ create_icon(GDBusProxy *proxy, StatusNotifierItem *snitem)
 		GVariant *iconpixmap_v = g_dbus_proxy_get_cached_property(proxy, "IconPixmap");
 		if (!iconpixmap_v)
 			return NULL;
-		paintable = get_paintable_from_data(iconpixmap_v);
+		paintable = get_paintable_from_data(iconpixmap_v, snitem->host->height);
 
 		snitem->iconpixmap_v = iconpixmap_v;
 
@@ -387,15 +389,6 @@ create_trayitem(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 	const char *menu_buspath;
 	GSimpleActionGroup *actiongroup;
 	GtkWidget *icon;
-
-	/*
-	 * const char *valid_menupaths[] = {
-	 * 	"/MenuBar",
-	 * 	"/com/canonical/dbusmenu",
-	 * 	"/org/ayatana/NotificationItem",
-	 * 	NULL
-	 * };
-	 */
 
 	g_signal_connect(proxy, "g-signal", G_CALLBACK(trayitem_signal_handler), snitem);
 

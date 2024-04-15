@@ -18,6 +18,7 @@ typedef struct StatusNotifierHost {
 	GtkWindow *window;
 	char *cssdata;
 	char *traymon;
+	gboolean in_exit;
 	int curwidth;
 	int height;
 	int margin;
