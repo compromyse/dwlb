@@ -1,10 +1,12 @@
 #include <stdlib.h>
-#include <unistd.h>
+#include <string.h>
 
 #include <glib.h>
+#include <glib-object.h>
 #include <glib-unix.h>
-#include <gtk4-layer-shell.h>
+#include <gdk/gdk.h>
 #include <gtk/gtk.h>
+#include <gtk4-layer-shell.h>
 
 #include "dwlbtray.h"
 
@@ -30,7 +32,13 @@ activate(GtkApplication* app, StatusNotifierHost *snhost)
 	gtk_layer_init_for_window(window);
 	gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_BOTTOM);
 	gtk_layer_set_exclusive_zone(window, -1);
-	static const gboolean anchors[] = {FALSE, TRUE, TRUE, FALSE};
+	static gboolean anchors[] = {FALSE, TRUE, TRUE, FALSE};
+	if (snhost->position == 1) {
+		anchors[0] = FALSE;   // left
+		anchors[1] = TRUE;    // right
+		anchors[2] = FALSE;   // top
+		anchors[3] = TRUE;    // bottom
+	}
 	for (int i = 0; i < GTK_LAYER_SHELL_EDGE_ENTRY_NUMBER; i++) {
 		gtk_layer_set_anchor(window, i, anchors[i]);
 	}
@@ -77,6 +85,7 @@ main(int argc, char *argv[])
 
 	char *bgcolor = NULL;
 	char *cssdata;
+	int position = 0;
 
 	int i = 1;
 	for (; i < argc; i++) {
@@ -87,9 +96,14 @@ main(int argc, char *argv[])
 			snhost->traymon = g_strdup(strings[1]);
 		} else if (strcmp(strings[0], "--bg-color") == 0) {
 			bgcolor = strdup(strings[1]);
+		} else if (strcmp(strings[0], "--position") == 0) {
+			if (strcmp(strings[1], "bottom") == 0)
+				position = 1;
 		}
 		g_strfreev(strings);
 	}
+
+	snhost->position = position;
 
 	if (bgcolor)
 		cssdata = g_strdup_printf("window.dwlbtray{background-color:%s;}", bgcolor);

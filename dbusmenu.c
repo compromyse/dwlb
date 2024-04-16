@@ -1,12 +1,15 @@
-/*
- * This whole thing is a mess .......
- */
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
 #include <time.h>
 
 #include <glib.h>
+#include <glib-object.h>
 #include <gio/gio.h>
+#include <gtk/gtk.h>
 
 #include "dwlbtray.h"
+
 
 static GMenu* create_menumodel(GVariant *data, StatusNotifierItem *snitem);
 
@@ -177,6 +180,7 @@ create_menumodel(GVariant *data, StatusNotifierItem *snitem)
 				g_menu_append_item(section, menuitem);
 				g_object_unref(menuitem);
 			}
+			// menuitem == NULL means menuitem is a separator
 			else {
 				g_menu_append_section(ret, NULL, G_MENU_MODEL(section));
 				g_object_unref(section);
@@ -217,7 +221,7 @@ on_menulayout_ready(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *sn
 		g_error_free(err);
 		return;
 	} else if (err) {
-		g_warning("%sfrom on_menulayout_ready\n", err->message);
+		g_warning("%s\n", err->message);
 		g_error_free(err);
 		return;
 	}
@@ -272,7 +276,6 @@ on_layout_updated(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *snit
 
 	} else if (err) {
 		g_warning("%s\n", err->message);
-		fprintf(stderr, "from on_layout_updated\n");
 		g_error_free(err);
 		return;
 	}
@@ -360,7 +363,6 @@ create_menu(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 
 	if (err) {
 		g_warning("%s\n", err->message);
-		fprintf(stderr, "from create_menu\n");
 		g_error_free(err);
 		return;
 	}

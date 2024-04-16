@@ -109,6 +109,7 @@
 	"	-set-top [OUTPUT]		draw bar at the top\n"	\
 	"	-set-bottom [OUTPUT]		draw bar at the bottom\n" \
 	"	-toggle-location [OUTPUT]	toggle bar location\n"	\
+	"	-nosystray			do not launch the systray program\n"	\
 	"	-traymon [OUTPUT]		set monitor name where systray will appear\n"	\
 	"Other\n"							\
 	"	-v				get version information\n" \
@@ -1687,13 +1688,14 @@ sig_handler(int sig)
 }
 
 static void
-start_systray(const char *parent_progname, const char *traymon)
+start_systray(const char *parent_progname, const char *traymon, bool bottom)
 {
 	char tray_exe_path[PATH_MAX];
 	char traypath_maybe[PATH_MAX];
 	char traybg_arg[64];
 	char height_arg[64];
 	char traymon_arg[64];
+	char position_arg[64];
 
 	pixman_color_t *traybg_clr = &inactive_bg_color;
 	snprintf(traybg_arg,
@@ -1711,9 +1713,13 @@ start_systray(const char *parent_progname, const char *traymon)
 
 	snprintf(height_arg, sizeof(height_arg), "--height=%u", height);
 	snprintf(traymon_arg, sizeof(traymon_arg), "--traymon=%s", traymon);
-	char *args[] = { tray_exe_path, height_arg, traybg_arg, traymon_arg, NULL };
+	if (!bottom)
+		snprintf(position_arg, sizeof(position_arg), "--position=%s", "top");
+	else
+		snprintf(position_arg, sizeof(position_arg), "--position=%s", "bottom");
+	char *args[] = { tray_exe_path, position_arg, height_arg, traybg_arg, traymon_arg, NULL };
 	if (!traymon)
-		args[3] = NULL;
+		args[4] = NULL;
 
 	int child_pid = fork();
 	if (child_pid == 0) {
@@ -1729,6 +1735,7 @@ main(int argc, char **argv)
 	Bar *bar, *bar2;
 	Seat *seat, *seat2;
 	const char *traymon = NULL;
+	bool systray_enabled = true;
 
 	/* Establish socket directory */
 	if (!(xdgruntimedir = getenv("XDG_RUNTIME_DIR")))
@@ -1908,6 +1915,8 @@ main(int argc, char **argv)
 			if (++i >= argc)
 				DIE("Option -scale requires an argument");
 			buffer_scale = strtoul(argv[i], &argv[i] + strlen(argv[i]), 10);
+		} else if (!strcmp(argv[i], "-nosystray")) {
+			systray_enabled = false;;
 		} else if (!strcmp(argv[i], "-traymon")) {
 			if (++i >= argc)
 				DIE("Option -traymon requires an argument");
@@ -2005,7 +2014,8 @@ main(int argc, char **argv)
 	signal(SIGCHLD, SIG_IGN);
 
 	/* Start tray program */
-	start_systray(argv[0], traymon);
+	if (systray_enabled)
+		start_systray(argv[0], traymon, bottom);
 
 	/* Run */
 	run_display = true;

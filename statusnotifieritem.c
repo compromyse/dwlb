@@ -1,7 +1,13 @@
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+
 #include <glib.h>
+#include <glib-object.h>
 #include <gio/gio.h>
+#include <gdk/gdk.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <gtk/gtk.h>
-#include <gtk4-layer-shell.h>
 
 #include "dwlbtray.h"
 
@@ -65,7 +71,7 @@ rightclick_validate(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *sn
 
 	// Report rest of possible errors
 	} else if (err) {
-		g_warning("%sfrom on_rightclick_cb\n", err->message);
+		g_warning("%s\n", err->message);
 		g_error_free(err);
 
 	} else {
@@ -225,7 +231,6 @@ new_iconname_handler(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *s
 		return;
 	} else if (err) {
 		g_warning("%s\n", err->message);
-		fprintf(stderr, "from new_iconname_handler\n");
 		g_error_free(err);
 		return;
 	}
@@ -265,7 +270,6 @@ new_iconpixmap_handler(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem 
 		return;
 	} else if (err) {
 		g_warning("%s\n", err->message);
-		fprintf(stderr, "from new_iconpixmap_handler\n");
 		g_error_free(err);
 		return;
 	}
@@ -411,11 +415,6 @@ create_trayitem(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 	g_signal_connect(rightclick, "pressed", G_CALLBACK(on_rightclick_cb), snitem);
 
 	actiongroup = g_simple_action_group_new();
-	if (snitem && icon && GTK_IS_WIDGET(icon)) {
-		gtk_widget_insert_action_group(icon,
-					       "menuitem",
-					       G_ACTION_GROUP(actiongroup));
-	}
 	snitem->actiongroup = actiongroup;
 
 	menu_buspath_v = g_dbus_proxy_get_cached_property(proxy, "Menu");
@@ -424,8 +423,6 @@ create_trayitem(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 	else
 		menu_buspath = NULL;
 
-	// for (int i = 0; valid_menupaths[i]; i++) {
-		// if (menu_buspath && g_strrstr(menu_buspath, valid_menupaths[i]) == 0) {
 	if (menu_buspath) {
 		GDBusNodeInfo *nodeinfo = g_dbus_node_info_new_for_xml(DBUSMENU_XML, NULL);
 		g_dbus_proxy_new_for_bus(G_BUS_TYPE_SESSION,
@@ -438,18 +435,17 @@ create_trayitem(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 		                         (GAsyncReadyCallback)create_menu,
 		                         snitem);
 		g_dbus_node_info_unref(nodeinfo);
+		g_variant_unref(menu_buspath_v);
 	}
-		// }
-	// }
 
 	if (icon) {
 		gtk_widget_add_controller(icon, GTK_EVENT_CONTROLLER(leftclick));
 		gtk_widget_add_controller(icon, GTK_EVENT_CONTROLLER(rightclick));
+		gtk_widget_insert_action_group(icon,
+		                               "menuitem",
+		                               G_ACTION_GROUP(actiongroup));
 		gtk_box_append(GTK_BOX(snitem->host->box), icon);
+
 		snitem->icon = icon;
 	}
-
-
-	if (menu_buspath_v)
-		g_variant_unref(menu_buspath_v);
 }

@@ -1,11 +1,14 @@
+#include <stdlib.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <string.h>
 
 #include <glib.h>
+#include <glib-object.h>
 #include <gio/gio.h>
 #include <gtk/gtk.h>
-#include <gtk4-layer-shell.h>
 
 #include "dwlbtray.h"
 
@@ -142,7 +145,6 @@ register_statusnotifieritem(GDBusConnection *conn,
 	                              &err);
 	if (err) {
 		g_warning("%s\n", err->message);
-		fprintf(stderr, "from register_statusnotifieritem\n");
 		g_error_free(err);
 	}
 }
@@ -359,7 +361,7 @@ name_acquired_handler(GDBusConnection *conn, const char *busname, StatusNotifier
                                       &err);
 
 	if (err) {
-		g_warning("%s\nfrom name_acquired_handler", err->message);
+		g_warning("%s\n", err->message);
 		g_error_free(err);
 	}
 }

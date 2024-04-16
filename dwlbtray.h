@@ -1,7 +1,10 @@
-#ifndef GTKTRAY_H
-#define GTKTRAY_H
+#ifndef DWLBTRAY_H
+#define DWLBTRAY_H
+
+#include <stdint.h>
 
 #include <glib.h>
+#include <glib-object.h>
 #include <gio/gio.h>
 #include <gtk/gtk.h>
 
@@ -19,6 +22,7 @@ typedef struct StatusNotifierHost {
 	char *cssdata;
 	char *traymon;
 	gboolean in_exit;
+	int position;
 	int curwidth;
 	int height;
 	int margin;
@@ -203,4 +207,4 @@ void terminate_statusnotifierhost(StatusNotifierHost *snhost);
 	"    </interface>\n"	\
 	"</node>\n"
 
-#endif /* GTKTRAY_H */
+#endif /* DWLBTRAY_H */
