@@ -179,8 +179,6 @@ unregister_statusnotifieritem(StatusNotifierItem *snitem)
 		g_object_unref(snitem->menuproxy);
 	if (snitem->proxy)
 		g_object_unref(snitem->proxy);
-	if (snitem->action_cb_data_slist)
-		g_slist_free_full(snitem->action_cb_data_slist, g_free);
 
 	if (snitem->paintable) {
 		g_object_unref(snitem->paintable);

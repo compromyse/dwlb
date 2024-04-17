@@ -36,7 +36,6 @@ typedef struct StatusNotifierHost {
 typedef struct StatusNotifierItem {
 	GDBusProxy *menuproxy;
 	GDBusProxy *proxy;
-	GSList *action_cb_data_slist;
 	GSimpleActionGroup *actiongroup;
 	GVariant *iconpixmap_v;
 	GdkPaintable *paintable;

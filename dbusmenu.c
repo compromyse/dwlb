@@ -32,6 +32,14 @@ action_activated_cb(GSimpleAction *action, GVariant* param, ActionCallbackData *
 }
 
 
+static void
+actioncbdata_finalize(ActionCallbackData *data, GClosure *closure)
+{
+	g_free(data);
+	data = NULL;
+}
+
+
 static GSimpleAction*
 create_action(uint32_t id, StatusNotifierItem *snitem)
 {
@@ -41,9 +49,13 @@ create_action(uint32_t id, StatusNotifierItem *snitem)
 	ActionCallbackData *data = g_malloc(sizeof(ActionCallbackData));
 	data->id = id;
 	data->proxy = snitem->menuproxy;
-	snitem->action_cb_data_slist = g_slist_prepend(snitem->action_cb_data_slist, data);
 
-	g_signal_connect(action, "activate", G_CALLBACK(action_activated_cb), data);
+	g_signal_connect_data(action,
+	                      "activate",
+	                      G_CALLBACK(action_activated_cb),
+	                      data,
+	                      (GClosureNotify)actioncbdata_finalize,
+	                      G_CONNECT_DEFAULT);
 
 	g_free(action_name);
 
