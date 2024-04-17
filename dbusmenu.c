@@ -248,10 +248,12 @@ on_menulayout_ready(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *sn
 	// and replaces it later
 	if (err && g_error_matches(err, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT)) {
 		g_error_free(err);
+		g_bit_unlock(&snitem->lock, 0);
 		return;
 	} else if (err) {
 		g_warning("%s\n", err->message);
 		g_error_free(err);
+		g_bit_unlock(&snitem->lock, 0);
 		return;
 	}
 
@@ -276,6 +278,8 @@ on_menulayout_ready(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *sn
 	g_variant_unref(menuitems);
 	g_variant_unref(layout);
 	g_variant_unref(data);
+
+	g_bit_unlock(&snitem->lock, 0);
 }
 
 
@@ -393,6 +397,7 @@ create_menu(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 	if (err) {
 		g_warning("%s\n", err->message);
 		g_error_free(err);
+		g_bit_unlock(&snitem->lock, 0);
 		return;
 	}
 

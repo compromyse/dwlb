@@ -334,6 +334,7 @@ create_icon(GDBusProxy *proxy, StatusNotifierItem *snitem)
 	const char *iconname = NULL;
 	GdkPaintable *paintable = NULL;
 	GVariant *iconname_v = g_dbus_proxy_get_cached_property(proxy, "IconName");
+	GVariant *iconpixmap_v = g_dbus_proxy_get_cached_property(proxy, "IconPixmap");
 
 	if (iconname_v) {
 		g_variant_get(iconname_v, "&s", &iconname);
@@ -345,14 +346,15 @@ create_icon(GDBusProxy *proxy, StatusNotifierItem *snitem)
 
 		snitem->iconname = g_strdup(iconname);
 
-	} else {
-		GVariant *iconpixmap_v = g_dbus_proxy_get_cached_property(proxy, "IconPixmap");
-		if (!iconpixmap_v)
-			return NULL;
+		if (iconpixmap_v)
+			g_variant_unref(iconpixmap_v);
+
+	} else if (iconpixmap_v) {
 		paintable = get_paintable_from_data(iconpixmap_v, snitem->host->height);
 
 		snitem->iconpixmap_v = iconpixmap_v;
-
+	} else {
+		paintable = get_paintable_from_name("missingicon", snitem->host->height);
 	}
 
 	image = gtk_image_new_from_paintable(paintable);
@@ -405,6 +407,7 @@ create_trayitem(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 	}
 
 	icon = create_icon(proxy, snitem);
+	snitem->icon = icon;
 
 	leftclick = gtk_gesture_click_new();
 	gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(leftclick), 1);
@@ -417,13 +420,17 @@ create_trayitem(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 	actiongroup = g_simple_action_group_new();
 	snitem->actiongroup = actiongroup;
 
-	menu_buspath_v = g_dbus_proxy_get_cached_property(proxy, "Menu");
-	if (menu_buspath_v)
-		g_variant_get(menu_buspath_v, "&o", &menu_buspath);
-	else
-		menu_buspath = NULL;
+	gtk_widget_add_controller(icon, GTK_EVENT_CONTROLLER(leftclick));
+	gtk_widget_add_controller(icon, GTK_EVENT_CONTROLLER(rightclick));
+	gtk_widget_insert_action_group(icon,
+				       "menuitem",
+				       G_ACTION_GROUP(actiongroup));
 
-	if (menu_buspath) {
+	gtk_box_append(GTK_BOX(snitem->host->box), icon);
+
+	menu_buspath_v = g_dbus_proxy_get_cached_property(proxy, "Menu");
+	if (menu_buspath_v) {
+		g_variant_get(menu_buspath_v, "&o", &menu_buspath);
 		GDBusNodeInfo *nodeinfo = g_dbus_node_info_new_for_xml(DBUSMENU_XML, NULL);
 		g_dbus_proxy_new_for_bus(G_BUS_TYPE_SESSION,
 		                         G_DBUS_PROXY_FLAGS_NONE,
@@ -436,16 +443,7 @@ create_trayitem(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 		                         snitem);
 		g_dbus_node_info_unref(nodeinfo);
 		g_variant_unref(menu_buspath_v);
-	}
-
-	if (icon) {
-		gtk_widget_add_controller(icon, GTK_EVENT_CONTROLLER(leftclick));
-		gtk_widget_add_controller(icon, GTK_EVENT_CONTROLLER(rightclick));
-		gtk_widget_insert_action_group(icon,
-		                               "menuitem",
-		                               G_ACTION_GROUP(actiongroup));
-		gtk_box_append(GTK_BOX(snitem->host->box), icon);
-
-		snitem->icon = icon;
+	} else {
+		g_bit_unlock(&snitem->lock, 0);
 	}
 }

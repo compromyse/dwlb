@@ -113,6 +113,7 @@ register_statusnotifieritem(GDBusConnection *conn,
 	g_debug("Registering %s\n", busname);
 	StatusNotifierItem *snitem;
 	snitem = g_malloc0(sizeof(StatusNotifierItem));
+	g_bit_lock(&snitem->lock, 0);
 	snitem->host = snhost;
 	snitem->busname = g_strdup(busname);
 	snitem->isclosing = FALSE;
@@ -153,6 +154,7 @@ register_statusnotifieritem(GDBusConnection *conn,
 static void
 unregister_statusnotifieritem(StatusNotifierItem *snitem)
 {
+	g_bit_lock(&snitem->lock, 0);
 	g_debug("Unregistering %s\n", snitem->busname);
 	if (snitem->popovermenu) {
 		gtk_popover_menu_set_menu_model(GTK_POPOVER_MENU(snitem->popovermenu), NULL);

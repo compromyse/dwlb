@@ -46,6 +46,7 @@ typedef struct StatusNotifierItem {
 	char *iconname;
 	gboolean isclosing;
 	uint32_t menurevision;
+	int lock;
 } StatusNotifierItem;
 
 
