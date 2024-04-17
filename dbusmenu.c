@@ -64,7 +64,7 @@ create_action(uint32_t id, StatusNotifierItem *snitem)
 
 
 static gboolean
-check_has_sections(GVariant *data, StatusNotifierItem *snitem)
+check_has_sections(GVariant *data)
 {
 	gboolean ret = FALSE;
 	char *val;
@@ -84,7 +84,19 @@ check_has_sections(GVariant *data, StatusNotifierItem *snitem)
 }
 
 
-//TODO: Ignore visible=false items
+static gboolean
+check_menuitem_visible(GVariant *data)
+{
+	gboolean isvisible = TRUE;
+	GVariant *menu_data = g_variant_get_child_value(data, 1);
+	g_variant_lookup(menu_data, "visible", "b", &isvisible);
+
+	g_variant_unref(menu_data);
+
+	return isvisible;
+}
+
+
 static GMenuItem*
 create_menuitem(GVariant *data, StatusNotifierItem *snitem)
 {
@@ -181,12 +193,15 @@ create_menumodel(GVariant *data, StatusNotifierItem *snitem)
 	GMenu *ret = g_menu_new();
 	GVariantIter iter;
 	GVariant *menuitem_data;
-	gboolean has_sections = check_has_sections(data, snitem);
+	gboolean has_sections = check_has_sections(data);
 
 	if (has_sections) {
 		GMenu *section = g_menu_new();
 		g_variant_iter_init(&iter, data);
 		while ((g_variant_iter_next(&iter, "v", &menuitem_data))) {
+			if (!check_menuitem_visible(menuitem_data))
+				continue;
+
 			GMenuItem *menuitem = create_menuitem(menuitem_data, snitem);
 			if (menuitem) {
 				g_menu_append_item(section, menuitem);
