@@ -68,15 +68,16 @@ check_has_sections(GVariant *data)
 {
 	gboolean ret = FALSE;
 	char *val;
-	GVariant *menuitem_data;
+	GVariant *menu_data;
 
 	GVariantIter iter;
 	g_variant_iter_init(&iter, data);
-	while ((g_variant_iter_next(&iter, "v", &menuitem_data))) {
-		GVariant *menu_data = g_variant_get_child_value(menuitem_data, 1);
-		gboolean check = g_variant_lookup(menu_data, "type", "&s", &val);
+	while ((g_variant_iter_next(&iter, "v", &menu_data))) {
+		GVariant *menuitem_data = g_variant_get_child_value(menu_data, 1);
+		gboolean check = g_variant_lookup(menuitem_data, "type", "&s", &val);
 		if (check && strcmp(val, "separator") == 0)
 			ret = TRUE;
+		g_variant_unref(menuitem_data);
 		g_variant_unref(menu_data);
 	}
 
@@ -181,7 +182,6 @@ create_menuitem(GVariant *data, StatusNotifierItem *snitem)
 	}
 
 	g_variant_unref(menu_data);
-	g_variant_unref(data);
 
 	return menuitem;
 }
@@ -199,8 +199,10 @@ create_menumodel(GVariant *data, StatusNotifierItem *snitem)
 		GMenu *section = g_menu_new();
 		g_variant_iter_init(&iter, data);
 		while ((g_variant_iter_next(&iter, "v", &menuitem_data))) {
-			if (!check_menuitem_visible(menuitem_data))
+			if (!check_menuitem_visible(menuitem_data)) {
+				g_variant_unref(menuitem_data);
 				continue;
+			}
 
 			GMenuItem *menuitem = create_menuitem(menuitem_data, snitem);
 			if (menuitem) {
