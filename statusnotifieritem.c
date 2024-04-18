@@ -393,7 +393,6 @@ create_trayitem(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 	GtkGesture *rightclick;
 	GVariant *menu_buspath_v;
 	const char *menu_buspath;
-	GSimpleActionGroup *actiongroup;
 	GtkWidget *icon;
 
 	g_signal_connect(proxy, "g-signal", G_CALLBACK(trayitem_signal_handler), snitem);
@@ -417,15 +416,8 @@ create_trayitem(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 	gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(rightclick), 3);
 	g_signal_connect(rightclick, "pressed", G_CALLBACK(on_rightclick_cb), snitem);
 
-	actiongroup = g_simple_action_group_new();
-	snitem->actiongroup = actiongroup;
-
 	gtk_widget_add_controller(icon, GTK_EVENT_CONTROLLER(leftclick));
 	gtk_widget_add_controller(icon, GTK_EVENT_CONTROLLER(rightclick));
-	gtk_widget_insert_action_group(icon,
-				       "menuitem",
-				       G_ACTION_GROUP(actiongroup));
-
 	gtk_box_append(GTK_BOX(snitem->host->box), icon);
 
 	menu_buspath_v = g_dbus_proxy_get_cached_property(proxy, "Menu");

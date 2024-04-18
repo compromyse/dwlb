@@ -162,12 +162,16 @@ unregister_statusnotifieritem(StatusNotifierItem *snitem)
 		snitem->popovermenu = NULL;
 	}
 
+	char *actiongroupname = g_strdelimit(g_strdup(snitem->busname), ".", '_');
+	actiongroupname = g_strdelimit(actiongroupname, ":", '_');
+
 	if (snitem->icon) {
-		gtk_widget_insert_action_group(snitem->icon, "menuitem", NULL);
-		g_object_unref(snitem->actiongroup);
+		gtk_widget_insert_action_group(snitem->icon, actiongroupname, NULL);
 		gtk_box_remove(GTK_BOX(snitem->host->box), snitem->icon);
 		snitem->icon = NULL;
 	}
+
+	g_free(actiongroupname);
 
 	g_dbus_connection_emit_signal(snitem->host->conn,
                                       NULL,

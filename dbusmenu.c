@@ -105,6 +105,9 @@ create_menuitem(GVariant *data, StatusNotifierItem *snitem)
 	// GVariant *data
 	GMenuItem *menuitem = NULL;
 
+	char *actiongroupname = g_strdelimit(g_strdup(snitem->busname), ".", '_');
+	actiongroupname = g_strdelimit(actiongroupname, ":", '_');
+
 	int32_t id;
 	// a{sv]
 	GVariant *menu_data;
@@ -153,7 +156,7 @@ create_menuitem(GVariant *data, StatusNotifierItem *snitem)
 
 	if ((label && isvisible && isenabled) && !(type && strcmp(type, "separator") == 0)) {
 		GSimpleAction *action = create_action(id, snitem);
-		char *action_name = g_strdup_printf("%s.%u", "menuitem", id);
+		char *action_name = g_strdup_printf("%s.%u", actiongroupname, id);
 		g_action_map_add_action(G_ACTION_MAP(snitem->actiongroup),
 		                        G_ACTION(action));
 		menuitem = g_menu_item_new(label, action_name);
@@ -164,7 +167,7 @@ create_menuitem(GVariant *data, StatusNotifierItem *snitem)
 	} else if ((label && !(type && strcmp(type, "separator") == 0))) {
 		GSimpleAction *action = create_action(id, snitem);
 		g_simple_action_set_enabled(action, FALSE);
-		char *action_name = g_strdup_printf("%s.%u", "menuitem", id);
+		char *action_name = g_strdup_printf("%s.%u", actiongroupname, id);
 		g_action_map_add_action(G_ACTION_MAP(snitem->actiongroup),
 		                        G_ACTION(action));
 		menuitem = g_menu_item_new(label, action_name);
@@ -182,6 +185,7 @@ create_menuitem(GVariant *data, StatusNotifierItem *snitem)
 	}
 
 	g_variant_unref(menu_data);
+	g_free(actiongroupname);
 
 	return menuitem;
 }
@@ -270,7 +274,7 @@ on_menulayout_ready(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *sn
 	GtkWidget *popovermenu = gtk_popover_menu_new_from_model(NULL);
 	gtk_popover_set_has_arrow(GTK_POPOVER(popovermenu), FALSE);
 	gtk_popover_menu_set_menu_model(GTK_POPOVER_MENU(popovermenu), G_MENU_MODEL(menu));
-	gtk_widget_set_parent(popovermenu, snitem->icon);
+	gtk_widget_set_parent(popovermenu, snitem->host->box);
 
 	snitem->popovermenu = popovermenu;
 
@@ -393,6 +397,20 @@ create_menu(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem)
 	GDBusProxy *proxy = g_dbus_proxy_new_for_bus_finish(res, &err);
 	snitem->menuproxy = proxy;
 	snitem->menurevision = UINT32_MAX;
+
+	GSimpleActionGroup *actiongroup;
+
+	char *actiongroupname = g_strdelimit(g_strdup(snitem->busname), ".", '_');
+	actiongroupname = g_strdelimit(actiongroupname, ":", '_');
+
+	actiongroup = g_simple_action_group_new();
+	gtk_widget_insert_action_group(snitem->host->box,
+				       actiongroupname,
+				       G_ACTION_GROUP(actiongroup));
+	snitem->actiongroup = actiongroup;
+
+	g_free(actiongroupname);
+
 
 	if (err) {
 		g_warning("%s\n", err->message);

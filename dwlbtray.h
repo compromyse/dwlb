@@ -34,9 +34,9 @@ typedef struct StatusNotifierHost {
 
 
 typedef struct StatusNotifierItem {
+	GSimpleActionGroup *actiongroup;
 	GDBusProxy *menuproxy;
 	GDBusProxy *proxy;
-	GSimpleActionGroup *actiongroup;
 	GVariant *iconpixmap_v;
 	GdkPaintable *paintable;
 	GtkWidget *icon;
