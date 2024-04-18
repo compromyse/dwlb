@@ -81,7 +81,17 @@ terminate_app(StatusNotifierHost *snhost)
 int
 main(int argc, char *argv[])
 {
-	StatusNotifierHost *snhost = start_statusnotifierhost();
+
+	StatusNotifierHost snhost;
+	snhost.height = 22;
+	snhost.curwidth = 22;
+	snhost.margin = 4;
+	snhost.noitems = 0;
+	snhost.position = 0;
+	snhost.cssdata = NULL;
+	snhost.traymon = NULL;
+	snhost.trayitems = NULL;
+	snhost.in_exit = FALSE;
 
 	char *bgcolor = NULL;
 	char *cssdata;
@@ -91,9 +101,9 @@ main(int argc, char *argv[])
 	for (; i < argc; i++) {
 		char **strings = g_strsplit(argv[i], "=", 0);
 		if (strcmp(strings[0], "--height") == 0) {
-			snhost->height = atoi(strings[1]);
+			snhost.height = atoi(strings[1]);
 		} else if (strcmp(strings[0], "--traymon") == 0) {
-			snhost->traymon = g_strdup(strings[1]);
+			snhost.traymon = g_strdup(strings[1]);
 		} else if (strcmp(strings[0], "--bg-color") == 0) {
 			bgcolor = strdup(strings[1]);
 		} else if (strcmp(strings[0], "--position") == 0) {
@@ -103,24 +113,25 @@ main(int argc, char *argv[])
 		g_strfreev(strings);
 	}
 
-	snhost->position = position;
+	snhost.position = position;
 
 	if (bgcolor)
 		cssdata = g_strdup_printf("window.dwlbtray{background-color:%s;}", bgcolor);
 	else
 		cssdata = g_strdup_printf("window.dwlbtray{background-color:%s;}", "#222222");
 
-	snhost->cssdata = cssdata;
+	snhost.cssdata = cssdata;
 	g_free(bgcolor);
 
 	GtkApplication *app = gtk_application_new("org.dwlb.dwlbtray",
 	                                          G_APPLICATION_DEFAULT_FLAGS);
 
-	g_signal_connect(app, "activate", G_CALLBACK(activate), snhost);
+	g_signal_connect(app, "activate", G_CALLBACK(activate), &snhost);
 
-	g_unix_signal_add(SIGINT, (GSourceFunc)terminate_app, snhost);
-	g_unix_signal_add(SIGTERM, (GSourceFunc)terminate_app, snhost);
+	g_unix_signal_add(SIGINT, (GSourceFunc)terminate_app, &snhost);
+	g_unix_signal_add(SIGTERM, (GSourceFunc)terminate_app, &snhost);
 
+	start_statusnotifierhost(&snhost);
 	char *argv_inner[] = { argv[0], NULL };
 	int status = g_application_run(G_APPLICATION(app), 1, argv_inner);
 

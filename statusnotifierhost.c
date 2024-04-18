@@ -385,7 +385,6 @@ snhost_finalize(StatusNotifierHost *snhost)
 	snhost->in_exit = TRUE;
 	dwlb_request_resize(snhost);
 	gtk_window_close(snhost->window);
-	g_free(snhost);
 	snhost = NULL;
 }
 
@@ -413,15 +412,9 @@ terminate_statusnotifierhost(StatusNotifierHost *snhost)
 }
 
 
-StatusNotifierHost*
-start_statusnotifierhost()
+void
+start_statusnotifierhost(StatusNotifierHost *snhost)
 {
-	StatusNotifierHost *snhost = g_malloc0(sizeof(StatusNotifierHost));
-
-	snhost->height = 22;
-	snhost->margin = 4;
-	snhost->noitems = 0;
-
 	snhost->owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,
                                           "org.kde.StatusNotifierWatcher",
                                           G_BUS_NAME_OWNER_FLAGS_NONE,
@@ -430,6 +423,4 @@ start_statusnotifierhost()
                                           (GBusNameLostCallback)name_lost_handler,
                                           snhost,
                                           (GDestroyNotify)snhost_finalize);
-
-	return snhost;
 }

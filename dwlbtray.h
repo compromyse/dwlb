@@ -52,7 +52,8 @@ typedef struct StatusNotifierItem {
 
 void create_trayitem(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem);
 void create_menu(GObject *obj, GAsyncResult *res, StatusNotifierItem *snitem);
-StatusNotifierHost* start_statusnotifierhost();
+//StatusNotifierHost* start_statusnotifierhost();
+void start_statusnotifierhost(StatusNotifierHost *snhost);
 void dwlb_request_resize(StatusNotifierHost *snhost);
 void terminate_statusnotifierhost(StatusNotifierHost *snhost);
 
