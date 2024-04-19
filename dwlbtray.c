@@ -16,8 +16,10 @@ activate(GtkApplication* app, StatusNotifierHost *snhost)
 {
 	GdkDisplay *display = gdk_display_get_default();
 
-	GtkWindow *window = GTK_WINDOW(gtk_application_window_new(app));
-	gtk_window_set_default_size(GTK_WINDOW(window), 22, snhost->height);
+	GtkWindow *window = GTK_WINDOW(gtk_window_new());
+	gtk_window_set_decorated(window, FALSE);
+	gtk_window_set_default_size(window, 22, snhost->height);
+	gtk_window_set_application(window, app);
 
 	GtkCssProvider *css = gtk_css_provider_new();
 	gtk_css_provider_load_from_string(css, snhost->cssdata);
