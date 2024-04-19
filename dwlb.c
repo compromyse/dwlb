@@ -1701,9 +1701,9 @@ start_systray(const char *parent_progname, const char *traymon, bool bottom)
 	snprintf(traybg_arg,
 	         sizeof(traybg_arg),
 	         "--bg-color=#%02x%02x%02x",
-	         (traybg_clr->red / 0x100),
-	         (traybg_clr->green / 0x100),
-	         (traybg_clr->blue) / 0x100);
+	         (traybg_clr->red / 0x101),
+	         (traybg_clr->green / 0x101),
+	         (traybg_clr->blue) / 0x101);
 
 	snprintf(traypath_maybe, sizeof(traypath_maybe), "%stray", parent_progname);
 	if (access(traypath_maybe, X_OK) == 0)
