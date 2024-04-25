@@ -109,7 +109,7 @@
 	"	-set-top [OUTPUT]		draw bar at the top\n"	\
 	"	-set-bottom [OUTPUT]		draw bar at the bottom\n" \
 	"	-toggle-location [OUTPUT]	toggle bar location\n"	\
-	"	-nosystray			do not launch the systray program\n"	\
+	"	-no-systray			do not launch the systray program\n"	\
 	"	-traymon [OUTPUT]		set monitor name where systray will appear\n"	\
 	"Other\n"							\
 	"	-v				get version information\n" \
@@ -1438,7 +1438,7 @@ request_resize(Bar *bar, char *data)
 
 	uint32_t traywidth = (uint32_t)atoi(data);
 
-	bar->width = bar->width_orig - traywidth;
+	bar->width = bar->width_orig - buffer_scale * traywidth;
 	bar->stride = bar->width * 4;
 	bar->bufsize = bar->stride * bar->height;
 	bar->redraw = true;
@@ -1915,7 +1915,7 @@ main(int argc, char **argv)
 			if (++i >= argc)
 				DIE("Option -scale requires an argument");
 			buffer_scale = strtoul(argv[i], &argv[i] + strlen(argv[i]), 10);
-		} else if (!strcmp(argv[i], "-nosystray")) {
+		} else if (!strcmp(argv[i], "-no-systray")) {
 			systray_enabled = false;;
 		} else if (!strcmp(argv[i], "-traymon")) {
 			if (++i >= argc)
