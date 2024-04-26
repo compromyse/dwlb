@@ -218,6 +218,7 @@ handle_method_call(GDBusConnection *conn,
 	if (strcmp(method_name, "RegisterStatusNotifierItem") == 0) {
 		const char *param;
 		const char *busobj;
+		const char *registree_name;
 
 		g_variant_get(parameters, "(&s)", &param);
 
@@ -227,7 +228,12 @@ handle_method_call(GDBusConnection *conn,
 			busobj = "/StatusNotifierItem";
 		}
 
-		register_statusnotifieritem(conn, sender, busobj, snhost);
+		if (g_str_has_prefix(param, ":") && strcmp(sender, param) != 0)
+			registree_name = param;
+		else
+			registree_name = sender;
+
+		register_statusnotifieritem(conn, registree_name, busobj, snhost);
 		g_dbus_method_invocation_return_value(invocation, NULL);
 
 	} else {
@@ -299,9 +305,7 @@ monitor_bus(GDBusConnection* conn,
 		const char *name;
 		const char *old_owner;
 		const char *new_owner;
-
 		g_variant_get(params, "(&s&s&s)", &name, &old_owner, &new_owner);
-
 		if (strcmp(new_owner, "") == 0) {
 			GSList *pmatch = g_slist_find_custom(snhost->trayitems, name, (GCompareFunc)find_snitem);
 			if (pmatch) {
@@ -311,6 +315,7 @@ monitor_bus(GDBusConnection* conn,
 				g_timeout_add_seconds(2, (GSourceFunc)unregister_after_timeout, snitem);
 			}
 		}
+
 	}
 }
 
