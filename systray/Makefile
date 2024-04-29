@@ -1,0 +1,21 @@
+BINS = dwlbtray
+OBJS = statusnotifierhost.o statusnotifieritem.o dbusmenu.o dwlbtray.o
+
+PREFIX ?= /usr/local
+CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -g
+
+all: $(BINS)
+
+clean:
+	$(RM) $(BINS) $(OBJS)
+
+install: all
+	install -D -t $(PREFIX)/bin $(BINS)
+
+%.o: dwlbtray.h
+dwlbtray: $(OBJS)
+
+dwlbtray: CFLAGS+=$(shell pkg-config --cflags glib-2.0 gtk4 gtk4-layer-shell-0)
+dwlbtray: LDLIBS+=$(shell pkg-config --libs glib-2.0 gtk4 gtk4-layer-shell-0) -lrt
+
+.PHONY: all clean install

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <libgen.h>
 #include <sys/mman.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -1691,6 +1692,7 @@ start_systray(const char *parent_progname, const char *traymon, bool bottom)
 {
 	char tray_exe_path[PATH_MAX];
 	char traypath_maybe[PATH_MAX];
+	char progname_buf[PATH_MAX];
 	char traybg_arg[64];
 	char height_arg[64];
 	char traymon_arg[64];
@@ -1704,7 +1706,14 @@ start_systray(const char *parent_progname, const char *traymon, bool bottom)
 	         (traybg_clr->green / 0x101),
 	         (traybg_clr->blue) / 0x101);
 
-	snprintf(traypath_maybe, sizeof(traypath_maybe), "%stray", parent_progname);
+	strncpy(progname_buf, parent_progname, sizeof(progname_buf));
+	char *lastslash = strrchr(progname_buf, '/');
+	if (lastslash) {
+		*(lastslash) = '\0';
+		snprintf(traypath_maybe, sizeof(traypath_maybe), "%s/systray/dwlbtray", progname_buf);
+	} else {
+		*(traypath_maybe) = '\0';
+	}
 	if (access(traypath_maybe, X_OK) == 0)
 		strcpy(tray_exe_path, traypath_maybe);
 	else

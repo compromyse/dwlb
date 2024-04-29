@@ -1,0 +1,6 @@
+*.o
+dwlbtray
+valgrind*
+pango.supp
+.cache
+compile_commands.json
