@@ -271,9 +271,8 @@ on_menulayout_ready(GDBusProxy *proxy, GAsyncResult *res, StatusNotifierItem *sn
 	menuitems = g_variant_get_child_value(layout, 2);
 
 	GMenu *menu = create_menumodel(menuitems, snitem);
-	GtkWidget *popovermenu = gtk_popover_menu_new_from_model(NULL);
+	GtkWidget *popovermenu = gtk_popover_menu_new_from_model_full(G_MENU_MODEL(menu), GTK_POPOVER_MENU_NESTED);
 	gtk_popover_set_has_arrow(GTK_POPOVER(popovermenu), FALSE);
-	gtk_popover_menu_set_menu_model(GTK_POPOVER_MENU(popovermenu), G_MENU_MODEL(menu));
 	gtk_widget_set_parent(popovermenu, snitem->host->box);
 
 	snitem->popovermenu = popovermenu;
