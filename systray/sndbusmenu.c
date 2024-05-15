@@ -531,8 +531,6 @@ sn_dbusmenu_constructed(GObject *obj)
 {
 	SnDbusmenu *self = SN_DBUSMENU(obj);
 
-	g_object_ref(self->snitem);
-
 	GDBusNodeInfo *nodeinfo = g_dbus_node_info_new_for_xml(DBUSMENU_XML, NULL);
 	g_dbus_proxy_new_for_bus(G_BUS_TYPE_SESSION,
 	                         G_DBUS_PROXY_FLAGS_NONE,

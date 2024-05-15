@@ -28,6 +28,7 @@ struct _SnItem
 	GSimpleActionGroup *actiongroup;
 
 	gboolean ready;
+	gboolean exiting;
 };
 
 G_DEFINE_FINAL_TYPE(SnItem, sn_item, GTK_TYPE_WIDGET)
@@ -373,9 +374,9 @@ sn_item_proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 	const char *menu_buspath = NULL;
 	GVariant *menu_buspath_v = g_dbus_proxy_get_cached_property(self->proxy, "Menu");
 
-	if (menu_buspath_v) {
+	if (menu_buspath_v && !self->exiting) {
 		g_variant_get(menu_buspath_v, "&o", &menu_buspath);
-		SnDbusmenu *dbusmenu = sn_dbusmenu_new(self->busname, menu_buspath, self);
+		SnDbusmenu *dbusmenu = sn_dbusmenu_new(self->busname, menu_buspath, g_object_ref(self));
 		g_object_set(self, "dbusmenu", dbusmenu, NULL);
 		g_variant_unref(menu_buspath_v);
 	}
@@ -524,10 +525,7 @@ sn_item_set_property(GObject *object, uint property_id, const GValue *value, GPa
 			self->iconsize = g_value_get_int(value);
 			break;
 		case PROP_ACTIONGROUP:
-			self->actiongroup = g_simple_action_group_new();
-			gtk_widget_insert_action_group(GTK_WIDGET(self),
-			                               "menuitem",
-			                               G_ACTION_GROUP(self->actiongroup));
+			self->actiongroup = g_value_get_object(value);
 			break;
 		case PROP_DBUSMENU:
 			self->dbusmenu = g_value_get_object(value);
@@ -595,7 +593,6 @@ sn_item_class_init(SnItemClass *klass)
 	obj_properties[PROP_ACTIONGROUP] =
 		g_param_spec_object("actiongroup", NULL, NULL,
 		                    G_TYPE_SIMPLE_ACTION_GROUP,
-		                    G_PARAM_CONSTRUCT_ONLY |
 		                    G_PARAM_READWRITE |
 		                    G_PARAM_STATIC_STRINGS);
 
@@ -628,6 +625,14 @@ static void
 sn_item_init(SnItem *self)
 {
 	GtkWidget *widget = GTK_WIDGET(self);
+
+	self->exiting = FALSE;
+	GSimpleActionGroup *actiongroup = g_simple_action_group_new();
+	g_object_set(self, "actiongroup", actiongroup, NULL);
+
+	gtk_widget_insert_action_group(GTK_WIDGET(self),
+				       "menuitem",
+				       G_ACTION_GROUP(self->actiongroup));
 
 	gtk_widget_set_hexpand(widget, TRUE);
 	gtk_widget_set_vexpand(widget, TRUE);
@@ -681,6 +686,7 @@ static void
 sn_item_dispose(GObject *obj)
 {
 	SnItem *self = SN_ITEM(obj);
+	self->exiting = TRUE;
 	g_debug("Disposing snitem %s %s",
 	        self->busname, self->busobj);
 
@@ -688,6 +694,13 @@ sn_item_dispose(GObject *obj)
 		g_object_unref(self->dbusmenu);
 		self->dbusmenu = NULL;
 	}
+
+	if (self->proxy) {
+		g_object_unref(self->proxy);
+		self->proxy = NULL;
+	}
+
+	gtk_widget_insert_action_group(GTK_WIDGET(self), "menuitem", NULL);
 
 	G_OBJECT_CLASS(sn_item_parent_class)->dispose(obj);
 }
@@ -697,6 +710,7 @@ sn_item_finalize(GObject *object)
 {
 	SnItem *self = SN_ITEM(object);
 
+	g_object_unref(self->actiongroup);
 	gtk_widget_unparent(self->popovermenu);
 	gtk_widget_unparent(self->image);
 

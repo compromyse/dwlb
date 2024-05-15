@@ -145,10 +145,11 @@ sn_host_unregister_item(SnHost *self, SnItem *snitem)
 	char *busname = sn_item_get_busname(snitem);
 	g_debug("Unregistering %s", busname);
 
+	self->trayitems = g_slist_remove(self->trayitems, snitem);
+
 	gtk_box_remove(GTK_BOX(self), GTK_WIDGET(snitem));
 	g_object_run_dispose(G_OBJECT(snitem));
 
-	self->trayitems = g_slist_remove(self->trayitems, snitem);
 	self->nitems = self->nitems - 1;
 
 	dwlb_request_resize(self);
