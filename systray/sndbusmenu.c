@@ -18,6 +18,7 @@ struct _SnDbusmenu {
 	GDBusProxy *proxy;
 
 	uint32_t revision;
+	gboolean reschedule;
 };
 
 G_DEFINE_FINAL_TYPE(SnDbusmenu, sn_dbusmenu, G_TYPE_OBJECT)
@@ -305,19 +306,62 @@ on_layout_updated(GDBusProxy *proxy, GAsyncResult *res, void *data)
 		return;
 	}
 
-	GVariant *layout;
-	GVariant *menuitems;
+	gboolean isvisible = sn_item_get_popover_visible(dbusmenu->snitem);
+	char status[1024];
 
-	layout = g_variant_get_child_value(retvariant, 1);
-	menuitems = g_variant_get_child_value(layout, 2);
+	if (isvisible)
+		strcpy(status, "visible");
+	else
+		strcpy(status, "notvisibile");
 
-	GMenu *newmenu = create_menumodel(menuitems, dbusmenu);
-	sn_item_set_menu_model(dbusmenu->snitem, newmenu);
+	if (isvisible) {
+		dbusmenu->reschedule = TRUE;
+		g_debug("Popover was visible, couldn't update menu %s", dbusmenu->busname);
+	} else {
 
-	g_variant_unref(menuitems);
-	g_variant_unref(layout);
+		g_debug("Running menu update: name %s, revision %i\n \
+			popover status: %s",
+			dbusmenu->busname,
+			dbusmenu->revision,
+			status);
+
+		GVariant *layout;
+		GVariant *menuitems;
+
+		layout = g_variant_get_child_value(retvariant, 1);
+		menuitems = g_variant_get_child_value(layout, 2);
+
+		GMenu *newmenu = create_menumodel(menuitems, dbusmenu);
+		sn_item_set_menu_model(dbusmenu->snitem, newmenu);
+		g_variant_unref(menuitems);
+		g_variant_unref(layout);
+	}
+
 	g_variant_unref(retvariant);
 	g_object_unref(dbusmenu);
+}
+
+void
+reschedule_update(SnItem *snitem, GParamSpec *pspec, void *data)
+{
+	SnDbusmenu *dbusmenu = SN_DBUSMENU(data);
+
+	gboolean popover_visible = sn_item_get_popover_visible(snitem);
+	if (popover_visible || !dbusmenu->reschedule)
+		return;
+
+
+	dbusmenu->reschedule = FALSE;
+
+	g_debug("sending reschedule call %s", dbusmenu->busname);
+	g_dbus_proxy_call(dbusmenu->proxy,
+	                  "GetLayout",
+	                  g_variant_new("(iias)", 0, -1, NULL),
+	                  G_DBUS_CALL_FLAGS_NONE,
+	                  -1,
+	                  NULL,
+	                  (GAsyncReadyCallback)on_layout_updated,
+	                  g_object_ref(dbusmenu));
 }
 
 
@@ -333,17 +377,26 @@ on_menuproxy_signal(GDBusProxy *proxy,
                     void *data)
 {
 	SnDbusmenu *dbusmenu = SN_DBUSMENU(data);
+
+	// Stop updates when popover is visible
+	gboolean popover_visible = sn_item_get_popover_visible(dbusmenu->snitem);
+
 	if (strcmp(signal, "LayoutUpdated") == 0) {
-		uint32_t revision = UINT32_MAX;
+		uint32_t revision;
 		int32_t parentid;
 		g_variant_get(params, "(ui)", &revision, &parentid);
 		if (dbusmenu->revision != UINT32_MAX && revision <= dbusmenu->revision) {
-			// g_debug("%s got %s, but menurevision didn't change. Ignoring\n", snitem->busname, signal);
+			g_debug("early return on signal %s, reason: revision", dbusmenu->busname);
 			return;
-		} else {
-			dbusmenu->revision = revision;
+		} else if (popover_visible) {
+			g_debug("early return on signal %s, reason: popover visible", dbusmenu->busname);
+			dbusmenu->reschedule = TRUE;
+			return;
 		}
 
+		dbusmenu->revision = revision;
+
+		g_debug("sending menuupdate call %s", dbusmenu->busname);
 		g_dbus_proxy_call(dbusmenu->proxy,
 		                  "GetLayout",
 		                  g_variant_new("(iias)", 0, -1, NULL),
@@ -354,6 +407,12 @@ on_menuproxy_signal(GDBusProxy *proxy,
 		                  g_object_ref(dbusmenu));
 
 	} else if (strcmp(signal, "ItemsPropertiesUpdated") == 0) {
+		if (popover_visible) {
+			g_debug("early return on signal %s, reason: popover visible", dbusmenu->busname);
+			dbusmenu->reschedule = TRUE;
+			return;
+		}
+		g_debug("sending menuupdate call %s", dbusmenu->busname);
 		g_dbus_proxy_call(dbusmenu->proxy,
 		                  "GetLayout",
 		                  g_variant_new("(iias)", 0, -1, NULL),
@@ -524,6 +583,7 @@ menuproxy_ready_cb(GObject *obj, GAsyncResult *res, void *data)
 static void
 sn_dbusmenu_init(SnDbusmenu *self)
 {
+	self->reschedule = FALSE;
 }
 
 static void
@@ -542,6 +602,8 @@ sn_dbusmenu_constructed(GObject *obj)
 	                         (GAsyncReadyCallback)menuproxy_ready_cb,
 	                         g_object_ref(self));
 	g_dbus_node_info_unref(nodeinfo);
+
+	g_signal_connect(self->snitem, "notify::menuvisible", G_CALLBACK(reschedule_update), self);
 
 	G_OBJECT_CLASS(sn_dbusmenu_parent_class)->constructed(obj);
 }

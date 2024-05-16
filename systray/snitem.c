@@ -29,6 +29,7 @@ struct _SnItem
 
 	gboolean ready;
 	gboolean exiting;
+	gboolean menu_visible;
 };
 
 G_DEFINE_FINAL_TYPE(SnItem, sn_item, GTK_TYPE_WIDGET)
@@ -41,6 +42,7 @@ enum
 	PROP_PROXY,
 	PROP_ACTIONGROUP,
 	PROP_DBUSMENU,
+	PROP_MENUVISIBLE,
 	N_PROPERTIES
 };
 
@@ -384,6 +386,22 @@ sn_item_proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 	g_object_unref(self);
 }
 
+void
+sn_item_popup(SnItem *self)
+{
+	g_object_set(self, "menuvisible", TRUE, NULL);
+	g_debug("popping up %s", self->busname);
+	gtk_popover_popup(GTK_POPOVER(self->popovermenu));
+}
+
+void
+sn_item_notify_closed(GtkPopover *popover, void *data)
+{
+	SnItem *self = SN_ITEM(data);
+	g_object_set(self, "menuvisible", FALSE, NULL);
+}
+
+
 static void
 sn_item_leftclick_handler(GtkGestureClick *click,
                           int n_press,
@@ -428,8 +446,7 @@ sn_item_rightclick_handler_helper(GObject *obj, GAsyncResult *res, void *data)
 		   g_strrstr(err->message, "error occured in AboutToShow") == 0) {
 		g_error_free(err);
 
-		gtk_popover_popup(GTK_POPOVER(self->popovermenu));
-
+		sn_item_popup(self);
 	// Report rest of possible errors
 	} else if (err) {
 		g_warning("%s\n", err->message);
@@ -438,7 +455,7 @@ sn_item_rightclick_handler_helper(GObject *obj, GAsyncResult *res, void *data)
 	} else {
 		g_variant_unref(val);
 
-		gtk_popover_popup(GTK_POPOVER(self->popovermenu));
+		sn_item_popup(self);
 	}
 
 	g_object_unref(self);
@@ -470,13 +487,14 @@ sn_item_rightclick_handler(GtkGestureClick *click,
 	g_object_unref(menuproxy);
 }
 
-static void sn_item_measure(GtkWidget *widget,
-                            GtkOrientation orientation,
-                            int for_size,
-                            int *minimum,
-                            int *natural,
-                            int *minimum_baseline,
-                            int *natural_baseline)
+static void
+sn_item_measure(GtkWidget *widget,
+                GtkOrientation orientation,
+                int for_size,
+                int *minimum,
+                int *natural,
+                int *minimum_baseline,
+                int *natural_baseline)
 {
 	SnItem *self = SN_ITEM(widget);
 
@@ -496,10 +514,11 @@ static void sn_item_measure(GtkWidget *widget,
 	}
 }
 
-static void sn_item_size_allocate(GtkWidget *widget,
-                                  int width,
-                                  int height,
-                                  int baseline)
+static void
+sn_item_size_allocate(GtkWidget *widget,
+                      int width,
+                      int height,
+                      int baseline)
 {
 	SnItem *self = SN_ITEM(widget);
 	gtk_widget_size_allocate(self->image, &(GtkAllocation) {0, 0, width, height}, -1);
@@ -530,6 +549,9 @@ sn_item_set_property(GObject *object, uint property_id, const GValue *value, GPa
 		case PROP_DBUSMENU:
 			self->dbusmenu = g_value_get_object(value);
 			break;
+		case PROP_MENUVISIBLE:
+			self->menu_visible = g_value_get_boolean(value);
+			break;
 		default:
 			G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
 	}
@@ -555,6 +577,9 @@ sn_item_get_property(GObject *object, uint property_id, GValue *value, GParamSpe
 			break;
 		case PROP_DBUSMENU:
 			g_value_set_object(value, self->dbusmenu);
+			break;
+		case PROP_MENUVISIBLE:
+			g_value_set_boolean(value, self->menu_visible);
 			break;
 		default:
 			G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
@@ -605,6 +630,13 @@ sn_item_class_init(SnItemClass *klass)
 	obj_properties[PROP_DBUSMENU] =
 		g_param_spec_object("dbusmenu", NULL, NULL,
 		                    SN_TYPE_DBUSMENU,
+		                    G_PARAM_READWRITE |
+		                    G_PARAM_STATIC_STRINGS);
+
+	obj_properties[PROP_MENUVISIBLE] =
+		g_param_spec_boolean("menuvisible", NULL, NULL,
+		                    FALSE,
+				    G_PARAM_CONSTRUCT |
 		                    G_PARAM_READWRITE |
 		                    G_PARAM_STATIC_STRINGS);
 
@@ -659,6 +691,8 @@ sn_item_init(SnItem *self)
 	gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(rightclick), 3);
 	g_signal_connect(rightclick, "pressed", G_CALLBACK(sn_item_rightclick_handler), self);
 	gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(rightclick));
+
+	g_signal_connect(self->popovermenu, "closed", G_CALLBACK(sn_item_notify_closed), self);
 }
 
 static void
@@ -687,6 +721,7 @@ sn_item_dispose(GObject *obj)
 {
 	SnItem *self = SN_ITEM(obj);
 	self->exiting = TRUE;
+	gtk_popover_popdown(GTK_POPOVER(self->popovermenu));
 	g_debug("Disposing snitem %s %s",
 	        self->busname, self->busobj);
 
@@ -754,6 +789,16 @@ sn_item_get_busname(SnItem *self)
 	g_object_get(self, "busname", &busname, NULL);
 
 	return busname;
+}
+
+gboolean
+sn_item_get_popover_visible(SnItem *self)
+{
+	gboolean visible;
+
+	g_object_get(self, "menuvisible", &visible, NULL);
+
+	return visible;
 }
 
 SnItem*

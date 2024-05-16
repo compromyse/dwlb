@@ -16,6 +16,7 @@ SnItem*		sn_item_new			(const char *busname,
 void		sn_item_set_menu_model		(SnItem *widget, GMenu *menu);
 void		sn_item_add_action		(SnItem *self, GSimpleAction *action);
 char*		sn_item_get_busname		(SnItem *self);
+gboolean	sn_item_get_popover_visible	(SnItem *self);
 
 G_END_DECLS
 
