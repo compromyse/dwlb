@@ -720,10 +720,11 @@ static void
 sn_item_dispose(GObject *obj)
 {
 	SnItem *self = SN_ITEM(obj);
-	self->exiting = TRUE;
-	gtk_popover_popdown(GTK_POPOVER(self->popovermenu));
 	g_debug("Disposing snitem %s %s",
 	        self->busname, self->busobj);
+
+	self->exiting = TRUE;
+	gtk_popover_popdown(GTK_POPOVER(self->popovermenu));
 
 	if (self->dbusmenu) {
 		g_object_unref(self->dbusmenu);
@@ -735,6 +736,7 @@ sn_item_dispose(GObject *obj)
 		self->proxy = NULL;
 	}
 
+	sn_item_set_menu_model(self, NULL);
 	gtk_widget_insert_action_group(GTK_WIDGET(self), "menuitem", NULL);
 
 	G_OBJECT_CLASS(sn_item_parent_class)->dispose(obj);
