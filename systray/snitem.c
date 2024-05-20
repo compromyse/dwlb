@@ -1,9 +1,11 @@
+#include <stdlib.h>
 #include <stdint.h>
 
 #include <glib.h>
 #include <glib-object.h>
 #include <gio/gio.h>
 #include <gdk/gdk.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <gtk/gtk.h>
 
 #include "snitem.h"
@@ -46,7 +48,14 @@ enum
 	N_PROPERTIES
 };
 
+enum
+{
+	RIGHTCLICK,
+	LAST_SIGNAL
+};
+
 static GParamSpec *obj_properties[N_PROPERTIES] = { NULL, };
+static uint signals[LAST_SIGNAL];
 
 static void	sn_item_constructed	(GObject *obj);
 static void	sn_item_dispose		(GObject *obj);
@@ -305,6 +314,14 @@ sn_item_proxy_signal_handler(GDBusProxy *proxy,
 	}
 }
 
+void
+sn_item_popup(SnItem *self)
+{
+	g_object_set(self, "menuvisible", TRUE, NULL);
+	g_debug("popping up %s", self->busname);
+	gtk_popover_popup(GTK_POPOVER(self->popovermenu));
+}
+
 static void
 sn_item_proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 {
@@ -380,18 +397,12 @@ sn_item_proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 		g_variant_get(menu_buspath_v, "&o", &menu_buspath);
 		SnDbusmenu *dbusmenu = sn_dbusmenu_new(self->busname, menu_buspath, g_object_ref(self));
 		g_object_set(self, "dbusmenu", dbusmenu, NULL);
+
+		g_signal_connect_swapped(self->dbusmenu, "abouttoshowhandled", G_CALLBACK(sn_item_popup), self);
 		g_variant_unref(menu_buspath_v);
 	}
 	self->ready = TRUE;
 	g_object_unref(self);
-}
-
-void
-sn_item_popup(SnItem *self)
-{
-	g_object_set(self, "menuvisible", TRUE, NULL);
-	g_debug("popping up %s", self->busname);
-	gtk_popover_popup(GTK_POPOVER(self->popovermenu));
 }
 
 void
@@ -412,53 +423,13 @@ sn_item_leftclick_handler(GtkGestureClick *click,
 	SnItem *self = SN_ITEM(data);
 
 	g_dbus_proxy_call(self->proxy,
-			  "Activate",
-			  g_variant_new("(ii)", 0, 0),
-			  G_DBUS_CALL_FLAGS_NONE,
-			  -1,
-			  NULL,
-			  NULL,
-			  NULL);
-}
-
-static void
-sn_item_rightclick_handler_helper(GObject *obj, GAsyncResult *res, void *data)
-{
-	SnItem *self = SN_ITEM(data);
-	if (!self->ready)
-		return;
-	GDBusProxy *proxy = G_DBUS_PROXY(obj);
-
-	GError *err = NULL;
-	GVariant *val =  g_dbus_proxy_call_finish(proxy, res, &err);
-
-	// This error is generated when answer for the call arrives after
-	// icon was finalized.
-	if (err && g_error_matches(err, G_DBUS_ERROR, G_DBUS_ERROR_NO_REPLY)) {
-		g_error_free(err);
-		g_object_unref(self);
-		return;
-
-	// Discord generates the following error here:
-	// 'G_DBUS_ERROR' 'G_DBUS_ERROR_FAILED' 'error occurred in AboutToShow'
-	// We ignore it.
-	} else if (err && g_error_matches(err, G_DBUS_ERROR, G_DBUS_ERROR_FAILED) &&
-		   g_strrstr(err->message, "error occured in AboutToShow") == 0) {
-		g_error_free(err);
-
-		sn_item_popup(self);
-	// Report rest of possible errors
-	} else if (err) {
-		g_warning("%s\n", err->message);
-		g_error_free(err);
-
-	} else {
-		g_variant_unref(val);
-
-		sn_item_popup(self);
-	}
-
-	g_object_unref(self);
+	                  "Activate",
+	                  g_variant_new("(ii)", 0, 0),
+	                  G_DBUS_CALL_FLAGS_NONE,
+	                  -1,
+	                  NULL,
+	                  NULL,
+	                  NULL);
 }
 
 static void
@@ -472,19 +443,7 @@ sn_item_rightclick_handler(GtkGestureClick *click,
 	if (!self->ready)
 		return;
 
-	GDBusProxy *menuproxy = sn_dbusmenu_get_proxy(self->dbusmenu);
-	if (!G_IS_DBUS_PROXY(menuproxy))
-		return;
-
-	g_dbus_proxy_call(menuproxy,
-			  "AboutToShow",
-			  g_variant_new("(i)", 0),
-			  G_DBUS_CALL_FLAGS_NONE,
-			  -1,
-			  NULL,
-			  sn_item_rightclick_handler_helper,
-			  g_object_ref(self));
-	g_object_unref(menuproxy);
+	g_signal_emit(self, signals[RIGHTCLICK], 0);
 }
 
 static void
@@ -592,6 +551,17 @@ sn_item_class_init(SnItemClass *klass)
 	GObjectClass *object_class = G_OBJECT_CLASS(klass);
 	GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
 
+	widget_class->measure = sn_item_measure;
+	widget_class->size_allocate = sn_item_size_allocate;
+
+	object_class->set_property = sn_item_set_property;
+	object_class->get_property = sn_item_get_property;
+
+	object_class->constructed = sn_item_constructed;
+	object_class->dispose = sn_item_dispose;
+	object_class->finalize = sn_item_finalize;
+
+
 	obj_properties[PROP_BUSNAME] =
 		g_param_spec_string("busname", NULL, NULL,
 		                    NULL,
@@ -635,22 +605,22 @@ sn_item_class_init(SnItemClass *klass)
 
 	obj_properties[PROP_MENUVISIBLE] =
 		g_param_spec_boolean("menuvisible", NULL, NULL,
-		                    FALSE,
-				    G_PARAM_CONSTRUCT |
-		                    G_PARAM_READWRITE |
-		                    G_PARAM_STATIC_STRINGS);
-
-	widget_class->measure = sn_item_measure;
-	widget_class->size_allocate = sn_item_size_allocate;
-
-	object_class->set_property = sn_item_set_property;
-	object_class->get_property = sn_item_get_property;
-
-	object_class->constructed = sn_item_constructed;
-	object_class->dispose = sn_item_dispose;
-	object_class->finalize = sn_item_finalize;
+		                     FALSE,
+		                     G_PARAM_CONSTRUCT |
+		                     G_PARAM_READWRITE |
+		                     G_PARAM_STATIC_STRINGS);
 
 	g_object_class_install_properties(object_class, N_PROPERTIES, obj_properties);
+
+	signals[RIGHTCLICK] = g_signal_new("rightclick",
+	                                   SN_TYPE_ITEM,
+	                                   G_SIGNAL_RUN_LAST,
+	                                   0,
+	                                   NULL,
+	                                   NULL,
+	                                   NULL,
+	                                   G_TYPE_NONE,
+	                                   0);
 }
 
 static void
