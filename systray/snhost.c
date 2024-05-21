@@ -1,14 +1,16 @@
+#include "snhost.h"
+
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <string.h>
 
 #include <glib.h>
 #include <glib-object.h>
 #include <gio/gio.h>
 #include <gtk/gtk.h>
 
-#include "snhost.h"
 #include "snitem.h"
 
 
@@ -16,19 +18,20 @@ struct _SnHost
 {
 	GtkWidget parent_instance;
 
-	char *traymon;
+	GDBusConnection* conn;
+	char* traymon;
+	GSList* trayitems;
+
 	int iconsize;
 	int margins;
 	int spacing;
 
-	GDBusConnection *conn;
 	int owner_id;
 	int obj_reg_id;
 	int sig_sub_id;
 
 	int nitems;
 	int curwidth;
-	GSList *trayitems;
 	gboolean exiting;
 };
 

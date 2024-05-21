@@ -1,5 +1,8 @@
+#include "snitem.h"
+
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <glib.h>
 #include <glib-object.h>
@@ -8,7 +11,6 @@
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <gtk/gtk.h>
 
-#include "snitem.h"
 #include "sndbusmenu.h"
 
 
@@ -16,19 +18,19 @@ struct _SnItem
 {
 	GtkWidget parent_instance;
 
-	char *busname;
-	char *busobj;
+	char* busname;
+	char* busobj;
+
+	GDBusProxy* proxy;
+	char* iconname;
+	GVariant* iconpixmaps;
+	SnDbusmenu* dbusmenu;
+
+	GtkWidget* image;
+	GtkWidget* popovermenu;
+	GSimpleActionGroup* actiongroup;
+
 	int iconsize;
-
-	GDBusProxy *proxy;
-	char *iconname;
-	GVariant *iconpixmaps;
-	SnDbusmenu *dbusmenu;
-
-	GtkWidget *image;
-	GtkWidget *popovermenu;
-	GSimpleActionGroup *actiongroup;
-
 	gboolean ready;
 	gboolean exiting;
 	gboolean menu_visible;
@@ -337,7 +339,7 @@ sn_item_proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 		return;
 	}
 
-	g_debug("Proxy created for snitem at: %s, obj path: %s",
+	g_debug("Created gdbusproxy for snitem %s %s",
 		g_dbus_proxy_get_name(proxy),
 		g_dbus_proxy_get_object_path(proxy));
 
@@ -752,6 +754,26 @@ void
 sn_item_add_action(SnItem *self, GSimpleAction *action)
 {
 	g_action_map_add_action(G_ACTION_MAP(self->actiongroup), G_ACTION(action));
+}
+
+void
+sn_item_remove_action(SnItem *self, const char *action_name)
+{
+	g_action_map_remove_action(G_ACTION_MAP(self->actiongroup), action_name);
+}
+
+void
+sn_item_remove_all_actions(SnItem *self)
+{
+	GtkWidget *widget = GTK_WIDGET(self);
+
+	gtk_widget_insert_action_group(widget, "menuitem", NULL);
+	g_object_unref(self->actiongroup);
+	GSimpleActionGroup *actiongroup = g_simple_action_group_new();
+	g_object_set(self, "actiongroup", actiongroup, NULL);
+	gtk_widget_insert_action_group(GTK_WIDGET(self),
+				       "menuitem",
+				       G_ACTION_GROUP(self->actiongroup));
 }
 
 char*

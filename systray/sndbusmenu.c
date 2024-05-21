@@ -1,12 +1,14 @@
+#include "sndbusmenu.h"
+
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <glib.h>
 #include <glib-object.h>
 #include <gio/gio.h>
 
 #include "snitem.h"
-#include "sndbusmenu.h"
 
 
 struct _SnDbusmenu {
@@ -14,16 +16,15 @@ struct _SnDbusmenu {
 
 	GMutex mutex;
 
-	char *busname;
-	char *busobj;
-	SnItem *snitem;
+	char* busname;
+	char* busobj;
+	SnItem* snitem;
 
-	GMenu *menu;
-	GDBusProxy *proxy;
+	GMenu* menu;
+	GDBusProxy* proxy;
 
 	uint32_t revision;
 	gboolean reschedule;
-	gboolean updating;
 };
 
 G_DEFINE_FINAL_TYPE(SnDbusmenu, sn_dbusmenu, G_TYPE_OBJECT)
@@ -46,7 +47,6 @@ enum
 static GParamSpec *obj_properties[N_PROPERTIES] = { NULL, };
 static uint signals[LAST_SIGNAL];
 
-
 typedef struct {
 	uint32_t id;
 	GDBusProxy* proxy;
@@ -68,9 +68,9 @@ static void		sn_dbusmenu_set_property	(GObject *object,
 
 static GMenu*		create_menumodel		(GVariant *data, SnDbusmenu *self);
 
-static GMenuItem*       create_menuitem                 (int32_t id, GVariant *menu_data,
-							 GVariant *submenu_data,
-							 SnDbusmenu *self);
+static GMenuItem*	create_menuitem			(int32_t id, GVariant *menu_data,
+							GVariant *submenu_data,
+							SnDbusmenu *self);
 
 
 static void
@@ -258,6 +258,7 @@ void layout_update(SnDbusmenu *self)
 		g_debug("Popover was visible, couldn't update menu %s", self->busname);
 	} else {
 		g_object_unref(self->menu);
+		sn_item_remove_all_actions(self->snitem);
 		self->menu = create_menumodel(menuitems, self);
 		sn_item_set_menu_model(self->snitem, self->menu);
 	}
@@ -326,7 +327,6 @@ find_menuid(GMenuModel *menu, int id, GVariant *menu_data, SnDbusmenu *self)
 static void
 props_removed_handler(GVariant *props,  SnDbusmenu *self)
 {
-	g_print("props removed\n");
 	// a(ias)
 	GVariant *data;
 	GMenuModel *menu = G_MENU_MODEL(self->menu);
@@ -337,6 +337,9 @@ props_removed_handler(GVariant *props,  SnDbusmenu *self)
 	while ((data = g_variant_iter_next_value(&iter))) {
 		g_variant_get_child(data, 0, "i", &id);
 		find_menuid(menu, id, NULL, self);
+		char *action_name = g_strdup_printf("menuitem.%i", id);
+		sn_item_remove_action(self->snitem, action_name);
+		g_free(action_name);
 		g_variant_unref(data);
 	}
 }
@@ -345,8 +348,6 @@ static void
 props_updated_handler(GVariant *props,  SnDbusmenu *self)
 {
 	// a(ia{sv})
-	g_print("props updated\n");
-	gboolean any_match = FALSE;
 	GVariant *data;
 	GMenuModel *menu = G_MENU_MODEL(self->menu);
 	int id;
@@ -357,14 +358,10 @@ props_updated_handler(GVariant *props,  SnDbusmenu *self)
 	while ((data = g_variant_iter_next_value(&iter))) {
 		g_variant_get_child(data, 0, "i", &id);
 		menuitem_data = g_variant_get_child_value(data, 1);
-		if (find_menuid(menu, id, menuitem_data, self))
-			any_match = TRUE;
+		find_menuid(menu, id, menuitem_data, self);
 		g_variant_unref(menuitem_data);
 		g_variant_unref(data);
 	}
-
-	if (!any_match)
-		self->reschedule = TRUE;
 }
 
 static void
@@ -383,7 +380,8 @@ proxy_signal_handler(GDBusProxy *proxy,
 		uint32_t revision;
 		int32_t parentid;
 		g_variant_get(params, "(ui)", &revision, &parentid);
-		if (self->revision == UINT32_MAX || revision >= self->revision) {
+		g_debug("%s got LayoutUpdated, revision %i, parentid %i", self->busname, revision, parentid);
+		if (!popover_visible && (self->revision == UINT32_MAX || self->revision < revision)) {
 			layout_update(self);
 			self->revision = revision;
 		} else if (popover_visible) {
@@ -391,8 +389,7 @@ proxy_signal_handler(GDBusProxy *proxy,
 		}
 
 	} else if (strcmp(signal, "ItemsPropertiesUpdated") == 0) {
-		g_print("props update\n");
-
+		g_debug("%s got ItemsPropertiesUpdated", self->busname);
 		GVariant *removed_props = g_variant_get_child_value(params, 1);
 		GVariant *updated_props = g_variant_get_child_value(params, 0);
 

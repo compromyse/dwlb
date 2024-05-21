@@ -17,6 +17,6 @@ install: all
 dwlbtray: $(OBJS)
 
 dwlbtray: CFLAGS+=$(shell pkg-config --cflags glib-2.0 gtk4 gtk4-layer-shell-0)
-dwlbtray: LDLIBS+=$(shell pkg-config --libs glib-2.0 gtk4 gtk4-layer-shell-0) -lrt
+dwlbtray: LDLIBS+=$(shell pkg-config --libs glib-2.0 gtk4 gtk4-layer-shell-0)
 
 .PHONY: all clean install
