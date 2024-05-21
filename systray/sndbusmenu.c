@@ -66,7 +66,7 @@ static GMenu*		create_menumodel		(GVariant *data, SnDbusmenu *self);
 
 
 static gboolean
-check_menuitem_visible(GVariant *data)
+menuitem_is_visible(GVariant *data)
 {
 	gboolean isvisible = TRUE;
 	GVariant *menu_data = g_variant_get_child_value(data, 1);
@@ -76,32 +76,6 @@ check_menuitem_visible(GVariant *data)
 
 	return isvisible;
 }
-
-
-static int
-get_n_sections(GVariant *data)
-{
-	int nsections = 1;
-	char *val;
-	GVariant *menu_data;
-
-	GVariantIter iter;
-	g_variant_iter_init(&iter, data);
-	while ((g_variant_iter_next(&iter, "v", &menu_data))) {
-		GVariant *menuitem_data = g_variant_get_child_value(menu_data, 1);
-		gboolean check = g_variant_lookup(menuitem_data, "type", "&s", &val);
-		if (check && strcmp(val, "separator") == 0)
-			nsections++;
-		g_variant_unref(menuitem_data);
-		g_variant_unref(menu_data);
-	}
-
-	if (nsections == 1)
-		nsections = 0;
-
-	return nsections;
-}
-
 
 /*
  * static int
@@ -244,7 +218,7 @@ create_menuitem(GVariant *data, SnDbusmenu *self)
 		g_free(action_name);
 		g_object_unref(action);
 
-	} else if ((label && !(type && strcmp(type, "separator") == 0))) {
+	} else if ((label && isvisible && !isenabled && !(type && strcmp(type, "separator") == 0))) {
 		GSimpleAction *action = create_action(id, self);
 		g_simple_action_set_enabled(action, FALSE);
 		char *action_name = g_strdup_printf("%s.%u", "menuitem", id);
@@ -255,7 +229,7 @@ create_menuitem(GVariant *data, SnDbusmenu *self)
 		g_object_unref(action);
 	}
 
-	if (has_submenu) {
+	if (isvisible && has_submenu) {
 		GVariant *submenu_data = g_variant_get_child_value(data, 2);
 		GMenu *submenu = create_menumodel(submenu_data, self);
 		g_menu_item_set_submenu(menuitem, G_MENU_MODEL(submenu));
@@ -274,43 +248,15 @@ create_menumodel(GVariant *data, SnDbusmenu *self)
 	GMenu *ret = g_menu_new();
 	GVariantIter iter;
 	GVariant *menuitem_data;
-	int nsections = get_n_sections(data);
 
-	if (nsections > 0) {
-		GMenu *section = g_menu_new();
-		g_variant_iter_init(&iter, data);
-		while ((g_variant_iter_next(&iter, "v", &menuitem_data))) {
-			if (!check_menuitem_visible(menuitem_data)) {
-				g_variant_unref(menuitem_data);
-				continue;
-			}
-
-			GMenuItem *menuitem = create_menuitem(menuitem_data, self);
-			if (menuitem) {
-				g_menu_append_item(section, menuitem);
-				g_object_unref(menuitem);
-			}
-			// menuitem == NULL means menuitem is a separator
-			else {
-				g_menu_append_section(ret, NULL, G_MENU_MODEL(section));
-				g_object_unref(section);
-				section = g_menu_new();
-			}
-			g_variant_unref(menuitem_data);
+	g_variant_iter_init(&iter, data);
+	while ((g_variant_iter_next(&iter, "v", &menuitem_data))) {
+		GMenuItem *menuitem = create_menuitem(menuitem_data, self);
+		if (menuitem) {
+			g_menu_append_item(ret, menuitem);
+			g_object_unref(menuitem);
 		}
-		g_menu_append_section(ret, NULL, G_MENU_MODEL(section));
-		g_object_unref(section);
-
-	} else {
-		g_variant_iter_init(&iter, data);
-		while ((g_variant_iter_next(&iter, "v", &menuitem_data))) {
-			GMenuItem *menuitem = create_menuitem(menuitem_data, self);
-			if (menuitem) {
-				g_menu_append_item(ret, menuitem);
-				g_object_unref(menuitem);
-			}
-			g_variant_unref(menuitem_data);
-		}
+		g_variant_unref(menuitem_data);
 	}
 
 	return ret;
