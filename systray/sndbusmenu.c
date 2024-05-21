@@ -16,6 +16,7 @@ struct _SnDbusmenu {
 	char *busobj;
 	SnItem *snitem;
 
+	GMenu *menu;
 	GDBusProxy *proxy;
 
 	uint32_t revision;
@@ -427,10 +428,9 @@ menulayout_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 	layout = g_variant_get_child_value(retvariant, 1);
 	menuitems = g_variant_get_child_value(layout, 2);
 
-	GMenu *menu = create_menumodel(menuitems, self);
-	sn_item_set_menu_model(self->snitem, menu);
+	self->menu = create_menumodel(menuitems, self);
+	sn_item_set_menu_model(self->snitem, self->menu);
 
-	g_object_unref(menu);
 	g_variant_unref(menuitems);
 	g_variant_unref(layout);
 	g_variant_unref(retvariant);
