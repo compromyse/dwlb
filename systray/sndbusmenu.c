@@ -12,6 +12,8 @@
 struct _SnDbusmenu {
 	GObject parent_instance;
 
+	GMutex mutex;
+
 	char *busname;
 	char *busobj;
 	SnItem *snitem;
@@ -21,6 +23,7 @@ struct _SnDbusmenu {
 
 	uint32_t revision;
 	gboolean reschedule;
+	gboolean updating;
 };
 
 G_DEFINE_FINAL_TYPE(SnDbusmenu, sn_dbusmenu, G_TYPE_OBJECT)
@@ -65,51 +68,10 @@ static void		sn_dbusmenu_set_property	(GObject *object,
 
 static GMenu*		create_menumodel		(GVariant *data, SnDbusmenu *self);
 
+static GMenuItem*       create_menuitem                 (int32_t id, GVariant *menu_data,
+							 GVariant *submenu_data,
+							 SnDbusmenu *self);
 
-static gboolean
-menuitem_is_visible(GVariant *data)
-{
-	gboolean isvisible = TRUE;
-	GVariant *menu_data = g_variant_get_child_value(data, 1);
-	g_variant_lookup(menu_data, "visible", "b", &isvisible);
-
-	g_variant_unref(menu_data);
-
-	return isvisible;
-}
-
-/*
- * static int
- * get_depth(GVariant *data)
- * {
- * 	int depth = 1;
- * 	int localdepth = 1;
- * 	char *val;
- * 	GVariant *menu_data;
- * 
- * 	GVariantIter iter;
- * 	g_variant_iter_init(&iter, data);
- * 	while ((g_variant_iter_next(&iter, "v", &menu_data))) {
- * 		GVariant *menuitem_data = g_variant_get_child_value(menu_data, 1);
- * 		gboolean check = g_variant_lookup(menuitem_data, "children-display", "&s", &val);
- * 		if (check) {
- * 			localdepth++;
- * 			//depth = depth + 1;
- * 			GVariant *child = g_variant_get_child_value(menu_data, 2);
- * 			get_depth(child);
- * 			g_variant_unref(child);
- * 		}
- * 		g_variant_unref(menuitem_data);
- * 		g_variant_unref(menu_data);
- * 
- * 		if (localdepth > depth)
- * 			depth = localdepth;
- * 		localdepth = 1;
- * 	}
- * 
- * 	return depth;
- * }
- */
 
 static void
 action_activated_handler(GSimpleAction *action, GVariant* param, ActionCallbackData *data)
@@ -158,18 +120,12 @@ create_action(uint32_t id, SnDbusmenu *self)
 }
 
 static GMenuItem*
-create_menuitem(GVariant *data, SnDbusmenu *self)
+create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data, SnDbusmenu *self)
 {
-	//  (ia{sv}av)
+	// a{sv]
 	// GVariant *data
 	GMenuItem *menuitem = NULL;
 
-	int32_t id;
-	// a{sv]
-	GVariant *menu_data;
-
-	g_variant_get_child(data, 0, "i", &id);
-	menu_data = g_variant_get_child_value(data, 1);
 
 	const char *label = NULL;
 	const char *type = NULL;
@@ -186,7 +142,7 @@ create_menuitem(GVariant *data, SnDbusmenu *self)
 
 	const char *has_submenu_s = NULL;
 	GVariantDict dict;
-	g_variant_dict_init(&dict, menu_data);
+	g_variant_dict_init(&dict, menuitem_data);
 	g_variant_dict_lookup(&dict, "label", "&s", &label);
 	g_variant_dict_lookup(&dict, "type", "&s", &type);
 	g_variant_dict_lookup(&dict, "enabled", "b", &isenabled);
@@ -231,14 +187,13 @@ create_menuitem(GVariant *data, SnDbusmenu *self)
 	}
 
 	if (isvisible && has_submenu) {
-		GVariant *submenu_data = g_variant_get_child_value(data, 2);
-		GMenu *submenu = create_menumodel(submenu_data, self);
+		GMenu *submenu = create_menumodel(submenuitem_data, self);
 		g_menu_item_set_submenu(menuitem, G_MENU_MODEL(submenu));
 		g_object_unref(submenu);
-		g_variant_unref(submenu_data);
 	}
 
-	g_variant_unref(menu_data);
+	if (menuitem)
+		g_menu_item_set_attribute(menuitem, "itemid", "i", id);
 
 	return menuitem;
 }
@@ -248,79 +203,68 @@ create_menumodel(GVariant *data, SnDbusmenu *self)
 {
 	GMenu *ret = g_menu_new();
 	GVariantIter iter;
+
+	//  (ia{sv}av)
+	GVariant *menuitem_data_packed;
 	GVariant *menuitem_data;
+	int32_t id;
 
 	g_variant_iter_init(&iter, data);
-	while ((g_variant_iter_next(&iter, "v", &menuitem_data))) {
-		GMenuItem *menuitem = create_menuitem(menuitem_data, self);
+	while ((g_variant_iter_next(&iter, "v", &menuitem_data_packed))) {
+		g_variant_get_child(menuitem_data_packed, 0, "i", &id);
+		menuitem_data = g_variant_get_child_value(menuitem_data_packed, 1);
+		GVariant *submenu_data = g_variant_get_child_value(menuitem_data_packed, 2);
+		GMenuItem *menuitem = create_menuitem(id, menuitem_data, submenu_data, self);
 		if (menuitem) {
 			g_menu_append_item(ret, menuitem);
 			g_object_unref(menuitem);
 		}
+		g_variant_unref(submenu_data);
 		g_variant_unref(menuitem_data);
+		g_variant_unref(menuitem_data_packed);
 	}
 
 	return ret;
 }
 
-static void
-layout_updated_handler(GObject *obj, GAsyncResult *res, void *data)
+void layout_update(SnDbusmenu *self)
 {
-	SnDbusmenu *self = SN_DBUSMENU(data);
-
 	GError *err = NULL;
-	GVariant *retvariant = g_dbus_proxy_call_finish(self->proxy, res, &err);
 
-	// Errors which might occur when the tray is running slowly (eg under valgrind)
-	// and user is spam clicking already exited icons
+	GVariant *data = g_dbus_proxy_call_sync(self->proxy,
+						"GetLayout",
+						g_variant_new("(iias)", 0, -1, NULL),
+						G_DBUS_CALL_FLAGS_NONE,
+						-1,
+						NULL,
+						&err);
 
-	// "No such object path '/MenuBar'
-	if (err && g_error_matches(err, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT)) {
+	if (err) {
+		g_debug("Error in layout_update %s", err->message);
 		g_error_free(err);
-		g_object_unref(self);
-		return;
-
-	// "The name is not activatable"
-	} else if (err && g_error_matches(err, G_DBUS_ERROR, G_DBUS_ERROR_SERVICE_UNKNOWN)) {
-		g_error_free(err);
-		g_object_unref(self);
-		return;
-
-	// "Remote peer disconnected"
-	} else if (err && g_error_matches(err, G_DBUS_ERROR, G_DBUS_ERROR_NO_REPLY)) {
-		g_error_free(err);
-		g_object_unref(self);
-		return;
-
-	} else if (err) {
-		g_warning("%s\n", err->message);
-		g_error_free(err);
-		g_object_unref(self);
 		return;
 	}
 
 	GVariant *layout;
 	GVariant *menuitems;
 
-	layout = g_variant_get_child_value(retvariant, 1);
+	layout = g_variant_get_child_value(data, 1);
 	menuitems = g_variant_get_child_value(layout, 2);
 
-	GMenu *newmenu = create_menumodel(menuitems, self);
 
 	gboolean isvisible = sn_item_get_popover_visible(self->snitem);
 	if (isvisible) {
 		self->reschedule = TRUE;
 		g_debug("Popover was visible, couldn't update menu %s", self->busname);
 	} else {
-		sn_item_set_menu_model(self->snitem, newmenu);
+		g_object_unref(self->menu);
+		self->menu = create_menumodel(menuitems, self);
+		sn_item_set_menu_model(self->snitem, self->menu);
 	}
-
-	g_object_unref(newmenu);
 	g_variant_unref(menuitems);
 	g_variant_unref(layout);
 
-	g_variant_unref(retvariant);
-	g_object_unref(self);
+	g_variant_unref(data);
 }
 
 void
@@ -334,18 +278,95 @@ reschedule_update(SnItem *snitem, GParamSpec *pspec, void *data)
 
 	self->reschedule = FALSE;
 
-	g_dbus_proxy_call(self->proxy,
-	                  "GetLayout",
-	                  g_variant_new("(iias)", 0, -1, NULL),
-	                  G_DBUS_CALL_FLAGS_NONE,
-	                  -1,
-	                  NULL,
-	                  (GAsyncReadyCallback)layout_updated_handler,
-	                  g_object_ref(self));
+	layout_update(self);
 }
 
+gboolean
+find_menuid(GMenuModel *menu, int id, GVariant *menu_data, SnDbusmenu *self)
+{
+	gboolean ret = FALSE;
 
-// TODO: Optimize this, lots of unneccessary work being done.
+	g_assert(G_IS_MENU_MODEL(menu));
+	int len = g_menu_model_get_n_items(menu);
+
+	int idattr;
+	for (int i = 0; i < len; i++) {
+		GMenuModel *submenu = g_menu_model_get_item_link(menu, i, G_MENU_LINK_SUBMENU);
+		if (submenu) {
+			ret = find_menuid(submenu, id, menu_data, self);
+			g_object_unref(submenu);
+		}
+
+		if (!ret) {
+			g_menu_model_get_item_attribute(menu, i, "itemid", "i", &idattr);
+			if (idattr == id) {
+				GMenuModel *link = g_menu_model_get_item_link(menu, i, G_MENU_LINK_SUBMENU);
+				g_menu_remove(G_MENU(menu), i);
+				if (menu_data) {
+					GMenuItem *item = create_menuitem(id, menu_data, NULL, self);
+					if (item && link)
+						g_menu_item_set_link(item, G_MENU_LINK_SUBMENU, link);
+					if (item) {
+						g_menu_insert_item(G_MENU(menu), i, item);
+						g_object_unref(item);
+					}
+				}
+				if (link)
+					g_object_unref(link);
+
+				ret = TRUE;
+				break;
+			}
+		}
+	}
+
+	return ret;
+}
+
+static void
+props_removed_handler(GVariant *props,  SnDbusmenu *self)
+{
+	g_print("props removed\n");
+	// a(ias)
+	GVariant *data;
+	GMenuModel *menu = G_MENU_MODEL(self->menu);
+	int id;
+
+	GVariantIter iter;
+	g_variant_iter_init(&iter, props);
+	while ((data = g_variant_iter_next_value(&iter))) {
+		g_variant_get_child(data, 0, "i", &id);
+		find_menuid(menu, id, NULL, self);
+		g_variant_unref(data);
+	}
+}
+
+static void
+props_updated_handler(GVariant *props,  SnDbusmenu *self)
+{
+	// a(ia{sv})
+	g_print("props updated\n");
+	gboolean any_match = FALSE;
+	GVariant *data;
+	GMenuModel *menu = G_MENU_MODEL(self->menu);
+	int id;
+	GVariant *menuitem_data;
+
+	GVariantIter iter;
+	g_variant_iter_init(&iter, props);
+	while ((data = g_variant_iter_next_value(&iter))) {
+		g_variant_get_child(data, 0, "i", &id);
+		menuitem_data = g_variant_get_child_value(data, 1);
+		if (find_menuid(menu, id, menuitem_data, self))
+			any_match = TRUE;
+		g_variant_unref(menuitem_data);
+		g_variant_unref(data);
+	}
+
+	if (!any_match)
+		self->reschedule = TRUE;
+}
+
 static void
 proxy_signal_handler(GDBusProxy *proxy,
                      const char *sender,
@@ -354,46 +375,37 @@ proxy_signal_handler(GDBusProxy *proxy,
                      void *data)
 {
 	SnDbusmenu *self = SN_DBUSMENU(data);
-
-	// Stop updates when popover is visible
-	gboolean popover_visible = sn_item_get_popover_visible(self->snitem);
+	g_mutex_lock(&self->mutex);
 
 	if (strcmp(signal, "LayoutUpdated") == 0) {
+		gboolean popover_visible = sn_item_get_popover_visible(self->snitem);
+
 		uint32_t revision;
 		int32_t parentid;
 		g_variant_get(params, "(ui)", &revision, &parentid);
-		if (self->revision != UINT32_MAX && revision <= self->revision) {
-			return;
+		if (self->revision == UINT32_MAX || revision >= self->revision) {
+			layout_update(self);
+			self->revision = revision;
 		} else if (popover_visible) {
 			self->reschedule = TRUE;
-			return;
 		}
-
-		self->revision = revision;
-
-		g_dbus_proxy_call(self->proxy,
-		                  "GetLayout",
-		                  g_variant_new("(iias)", 0, -1, NULL),
-		                  G_DBUS_CALL_FLAGS_NONE,
-		                  -1,
-		                  NULL,
-		                  layout_updated_handler,
-		                  g_object_ref(self));
 
 	} else if (strcmp(signal, "ItemsPropertiesUpdated") == 0) {
-		if (popover_visible) {
-			self->reschedule = TRUE;
-			return;
+		g_print("props update\n");
+
+		GVariant *removed_props = g_variant_get_child_value(params, 1);
+		GVariant *updated_props = g_variant_get_child_value(params, 0);
+
+		if (removed_props) {
+			props_removed_handler(removed_props, self);
+			g_variant_unref(removed_props);
 		}
-		g_dbus_proxy_call(self->proxy,
-		                  "GetLayout",
-		                  g_variant_new("(iias)", 0, -1, NULL),
-		                  G_DBUS_CALL_FLAGS_NONE,
-		                  -1,
-		                  NULL,
-		                  layout_updated_handler,
-		                  g_object_ref(self));
+		if (updated_props) {
+			props_updated_handler(updated_props, self);
+			g_variant_unref(updated_props);
+		}
 	}
+	g_mutex_unlock(&self->mutex);
 }
 
 static void
@@ -422,6 +434,7 @@ menulayout_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 	uint32_t revision = 0;
 	GVariant *layout;
 	GVariant *menuitems;
+
 
 	g_variant_get_child(retvariant, 0, "u", &revision);
 
@@ -651,6 +664,8 @@ static void
 sn_dbusmenu_finalize(GObject *obj)
 {
 	SnDbusmenu *self = SN_DBUSMENU(obj);
+	if (self->menu)
+		g_object_unref(self->menu);
 	g_free(self->busname);
 	g_free(self->busobj);
 	G_OBJECT_CLASS(sn_dbusmenu_parent_class)->finalize(obj);
