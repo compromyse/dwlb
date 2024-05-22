@@ -23,12 +23,13 @@ struct _SnItem
 
 	GDBusProxy* proxy;
 	char* iconname;
-	GVariant* iconpixmaps;
+	GVariant* iconpixmap;
 	SnDbusmenu* dbusmenu;
 
 	GtkWidget* image;
 	GtkWidget* popovermenu;
 	GSimpleActionGroup* actiongroup;
+	GSList* cachedicons;
 
 	int iconsize;
 	gboolean ready;
@@ -58,6 +59,12 @@ enum
 
 static GParamSpec *obj_properties[N_PROPERTIES] = { NULL, };
 static uint signals[LAST_SIGNAL];
+
+typedef struct {
+	GVariant* iconpixmap;
+	char* iconname;
+	GdkPaintable* icondata;
+} CachedIcon;
 
 static void	sn_item_constructed	(GObject *obj);
 static void	sn_item_dispose		(GObject *obj);
@@ -134,11 +141,10 @@ select_icon_by_size(GVariant *icondata_v, int32_t target_icon_size)
 }
 
 static GdkPaintable*
-get_paintable_from_data(GVariant *icons, int32_t iconsize)
+get_paintable_from_data(GVariant *iconpixmap_v, int32_t iconsize)
 {
 	GdkPaintable *paintable;
 	GVariantIter iter;
-	GVariant *iconpixmap_v = select_icon_by_size(icons, iconsize);
 
 	int32_t width;
 	int32_t height;
@@ -174,7 +180,6 @@ get_paintable_from_data(GVariant *icons, int32_t iconsize)
 
 	g_object_unref(pixbuf);
 	g_variant_unref(icon_data_v);
-	g_variant_unref(iconpixmap_v);
 
 	return paintable;
 }
@@ -196,6 +201,12 @@ get_paintable_from_name(const char *iconname, int32_t iconsize)
 	paintable = GDK_PAINTABLE(icon);
 
 	return paintable;
+}
+
+int
+find_cached_name(CachedIcon *cicon, const char *iconname)
+{
+	return strcmp(cicon->iconname, iconname);
 }
 
 static void
@@ -223,24 +234,44 @@ sn_item_proxy_new_iconname_handler(GObject *obj, GAsyncResult *res, void *data)
 	const char *iconname = NULL;
 	g_variant_get(retvariant, "(v)", &iconname_v);
 	g_variant_get(iconname_v, "&s", &iconname);
-	g_variant_unref(iconname_v);
+	g_variant_unref(retvariant);
+
+	GSList *elem = g_slist_find_custom(self->cachedicons, iconname, (GCompareFunc)find_cached_name);
 
 	if (strcmp(iconname, self->iconname) == 0) {
-		// g_debug("%s got NewIcon, but iconname didn't change. Ignoring\n", snitem->busname);
-		g_variant_unref(retvariant);
-		g_object_unref(self);
-		return;
+	// Icon didn't change
+		;
+	} else if (elem) {
+	// Cache hit
+		CachedIcon *cicon = (CachedIcon*)elem->data;
+		self->iconname = cicon->iconname;
+		gtk_image_set_from_paintable(GTK_IMAGE(self->image), cicon->icondata);
+	} else {
+	// Cache miss -> cache new icon
+		CachedIcon *cicon = g_malloc0(sizeof(CachedIcon));
+		self->iconname = g_strdup(iconname);
+		cicon->iconname = self->iconname;
+		cicon->icondata = get_paintable_from_name(self->iconname,
+		                                          self->iconsize);
+		gtk_image_set_from_paintable(GTK_IMAGE(self->image), cicon->icondata);
+		self->cachedicons = g_slist_prepend(self->cachedicons, cicon);
 	}
 
-	g_free(self->iconname);
-
-	self->iconname = g_strdup(iconname);
-	GdkPaintable *paintable = get_paintable_from_name(self->iconname, self->iconsize);
-	gtk_image_set_from_paintable(GTK_IMAGE(self->image), paintable);
-	g_object_unref(paintable);
-
-	g_variant_unref(retvariant);
+	g_variant_unref(iconname_v);
 	g_object_unref(self);
+}
+
+int
+find_cached_pixmap(CachedIcon *cicon, GVariant *pixmap)
+{
+	int ret;
+	if (cicon->iconpixmap && g_variant_equal(cicon->iconpixmap, pixmap)) {
+		ret = 0;
+	} else {
+		ret = 1;
+	}
+
+	return ret;
 }
 
 static void
@@ -264,23 +295,35 @@ sn_item_proxy_new_pixmaps_handler(GObject *obj, GAsyncResult *res, void *data)
 		return;
 	}
 
-	GVariant *newpixmap_v;
-	g_variant_get(retvariant, "(v)", &newpixmap_v);
-	g_variant_unref(retvariant);
+	GVariant *newpixmaps;
+	g_variant_get(retvariant, "(v)", &newpixmaps);
 
-	if (g_variant_equal(newpixmap_v, self->iconpixmaps)) {
-		// g_debug ("%s got NewIcon, but iconpixmap didn't change. Ignoring\n", snitem->busname);
-		g_variant_unref(newpixmap_v);
-		g_object_unref(self);
-		return;
+	GVariant *pixmap = select_icon_by_size(newpixmaps, self->iconsize);
+
+	GSList *elem = g_slist_find_custom(self->cachedicons, pixmap, (GCompareFunc)find_cached_pixmap);
+
+	if (g_variant_equal(pixmap, self->iconpixmap)) {
+	// Icon didn't change
+		;
+	} else if (elem) {
+	// Cache hit
+		CachedIcon *cicon = (CachedIcon*)elem->data;
+		self->iconpixmap = cicon->iconpixmap;
+		gtk_image_set_from_paintable(GTK_IMAGE(self->image), cicon->icondata);
+	} else {
+	// Cache miss -> cache new icon
+		CachedIcon *cicon = g_malloc0(sizeof(CachedIcon));
+		self->iconpixmap = g_variant_ref(pixmap);
+		cicon->iconpixmap = self->iconpixmap;
+		cicon->icondata = get_paintable_from_data(self->iconpixmap,
+		                                          self->iconsize);
+		gtk_image_set_from_paintable(GTK_IMAGE(self->image), cicon->icondata);
+		self->cachedicons = g_slist_prepend(self->cachedicons, cicon);
 	}
 
-	g_variant_unref(self->iconpixmaps);
-	self->iconpixmaps = newpixmap_v;
-	GdkPaintable *paintable = get_paintable_from_data(self->iconpixmaps,
-	                                                  self->iconsize);
-	gtk_image_set_from_paintable(GTK_IMAGE(self->image), paintable);
-	g_object_unref(paintable);
+	g_variant_unref(pixmap);
+	g_variant_unref(newpixmaps);
+	g_variant_unref(retvariant);
 	g_object_unref(self);
 }
 
@@ -294,7 +337,7 @@ sn_item_proxy_signal_handler(GDBusProxy *proxy,
 	SnItem *self = SN_ITEM(data);
 
 	if (strcmp(signal, "NewIcon") == 0) {
-		if (self->iconpixmaps)
+		if (self->iconpixmap)
 			g_dbus_proxy_call(proxy,
 			                  "org.freedesktop.DBus.Properties.Get",
 			                  g_variant_new("(ss)", "org.kde.StatusNotifierItem", "IconPixmap"),
@@ -320,7 +363,6 @@ void
 sn_item_popup(SnItem *self)
 {
 	g_object_set(self, "menuvisible", TRUE, NULL);
-	g_debug("popping up %s", self->busname);
 	gtk_popover_popup(GTK_POPOVER(self->popovermenu));
 }
 
@@ -358,7 +400,7 @@ sn_item_proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 
 	char *iconname = NULL;
 	GVariant *iconname_v = g_dbus_proxy_get_cached_property(proxy, "IconName");
-	GVariant *iconpixmap_v = g_dbus_proxy_get_cached_property(proxy, "IconPixmap");
+	GVariant *iconpixmaps = g_dbus_proxy_get_cached_property(proxy, "IconPixmap");
 
 	if (iconname_v) {
 		g_variant_get(iconname_v, "s", &iconname);
@@ -371,26 +413,31 @@ sn_item_proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 
 	if (iconname) {
 		self->iconname = iconname;
-	} else if (iconpixmap_v) {
-		g_variant_ref(iconpixmap_v);
-		self->iconpixmaps = iconpixmap_v;
+	} else if (iconpixmaps) {
+		self->iconpixmap = select_icon_by_size(iconpixmaps, self->iconsize);
 	} else {
 		self->iconname = g_strdup("noicon");
 	}
 
-	if (iconpixmap_v)
-		g_variant_unref(iconpixmap_v);
+	if (iconpixmaps)
+		g_variant_unref(iconpixmaps);
+
+	CachedIcon *cicon = g_malloc0(sizeof(CachedIcon));
 
 	GdkPaintable *paintable;
 	if (self->iconname) {
 		paintable = get_paintable_from_name(self->iconname, self->iconsize);
-
+		cicon->iconname = self->iconname;
+		cicon->icondata = paintable;
 	} else {
-		paintable = get_paintable_from_data(self->iconpixmaps, self->iconsize);
+		paintable = get_paintable_from_data(self->iconpixmap, self->iconsize);
+		cicon->iconpixmap = self->iconpixmap;
+		cicon->icondata = paintable;
 	}
 
+	self->cachedicons = g_slist_prepend(self->cachedicons, cicon);
+
 	gtk_image_set_from_paintable(GTK_IMAGE(self->image), paintable);
-	g_object_unref(paintable);
 
 	const char *menu_buspath = NULL;
 	GVariant *menu_buspath_v = g_dbus_proxy_get_cached_property(self->proxy, "Menu");
@@ -715,6 +762,18 @@ sn_item_dispose(GObject *obj)
 }
 
 static void
+cachedicons_free(void *data)
+{
+	CachedIcon *cicon = (CachedIcon*)data;
+	g_free(cicon->iconname);
+	if (cicon->iconpixmap)
+		g_variant_unref(cicon->iconpixmap);
+	if (cicon->icondata)
+		g_object_unref(cicon->icondata);
+	g_free(cicon);
+}
+
+static void
 sn_item_finalize(GObject *object)
 {
 	SnItem *self = SN_ITEM(object);
@@ -725,11 +784,15 @@ sn_item_finalize(GObject *object)
 
 	g_free(self->busname);
 	g_free(self->busobj);
-	g_free(self->iconname);
 
-	if (self->iconpixmaps) {
-		g_variant_unref(self->iconpixmaps);
+	/*
+	g_free(self->iconname);
+	if (self->iconpixmap) {
+		g_variant_unref(self->iconpixmap);
 	}
+	*/
+
+	g_slist_free_full(self->cachedicons, cachedicons_free);
 
 	G_OBJECT_CLASS(sn_item_parent_class)->finalize(object);
 }
