@@ -203,12 +203,6 @@ get_paintable_from_name(const char *iconname, int32_t iconsize)
 	return paintable;
 }
 
-int
-find_cached_name(CachedIcon *cicon, const char *iconname)
-{
-	return strcmp(cicon->iconname, iconname);
-}
-
 static void
 sn_item_proxy_new_iconname_handler(GObject *obj, GAsyncResult *res, void *data)
 {
@@ -236,12 +230,17 @@ sn_item_proxy_new_iconname_handler(GObject *obj, GAsyncResult *res, void *data)
 	g_variant_get(iconname_v, "&s", &iconname);
 	g_variant_unref(retvariant);
 
-	GSList *elem = g_slist_find_custom(self->cachedicons, iconname, (GCompareFunc)find_cached_name);
 
 	if (strcmp(iconname, self->iconname) == 0) {
 	// Icon didn't change
-		;
-	} else if (elem) {
+		g_variant_unref(iconname_v);
+		g_object_unref(self);
+		return;
+	}
+
+	GSList *elem = g_slist_find_custom(self->cachedicons, iconname, (GCompareFunc)strcmp);
+
+	if (elem) {
 	// Cache hit
 		CachedIcon *cicon = (CachedIcon*)elem->data;
 		self->iconname = cicon->iconname;
@@ -300,12 +299,18 @@ sn_item_proxy_new_pixmaps_handler(GObject *obj, GAsyncResult *res, void *data)
 
 	GVariant *pixmap = select_icon_by_size(newpixmaps, self->iconsize);
 
-	GSList *elem = g_slist_find_custom(self->cachedicons, pixmap, (GCompareFunc)find_cached_pixmap);
-
 	if (g_variant_equal(pixmap, self->iconpixmap)) {
 	// Icon didn't change
-		;
-	} else if (elem) {
+		g_variant_unref(pixmap);
+		g_variant_unref(newpixmaps);
+		g_variant_unref(retvariant);
+		g_object_unref(self);
+		return;
+	}
+
+	GSList *elem = g_slist_find_custom(self->cachedicons, pixmap, (GCompareFunc)find_cached_pixmap);
+
+	if (elem) {
 	// Cache hit
 		CachedIcon *cicon = (CachedIcon*)elem->data;
 		self->iconpixmap = cicon->iconpixmap;
