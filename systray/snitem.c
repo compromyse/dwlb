@@ -203,6 +203,13 @@ get_paintable_from_name(const char *iconname, int32_t iconsize)
 	return paintable;
 }
 
+int
+find_cached_name(CachedIcon *cicon, const char *name)
+{
+
+	return strcmp(cicon->iconname, name);
+}
+
 static void
 sn_item_proxy_new_iconname_handler(GObject *obj, GAsyncResult *res, void *data)
 {
@@ -238,7 +245,7 @@ sn_item_proxy_new_iconname_handler(GObject *obj, GAsyncResult *res, void *data)
 		return;
 	}
 
-	GSList *elem = g_slist_find_custom(self->cachedicons, iconname, (GCompareFunc)strcmp);
+	GSList *elem = g_slist_find_custom(self->cachedicons, iconname, (GCompareFunc)find_cached_name);
 
 	if (elem) {
 	// Cache hit
