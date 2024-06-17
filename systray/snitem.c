@@ -755,7 +755,6 @@ sn_item_dispose(GObject *obj)
 	        self->busname, self->busobj);
 
 	self->exiting = TRUE;
-	gtk_popover_popdown(GTK_POPOVER(self->popovermenu));
 
 	if (self->dbusmenu) {
 		g_object_unref(self->dbusmenu);
@@ -768,6 +767,17 @@ sn_item_dispose(GObject *obj)
 	}
 
 	sn_item_set_menu_model(self, NULL);
+
+	if (self->popovermenu) {
+		gtk_widget_unparent(self->popovermenu);
+		self->popovermenu = NULL;
+	}
+
+	if (self->image) {
+		gtk_widget_unparent(self->image);
+		self->image = NULL;
+	}
+
 	gtk_widget_insert_action_group(GTK_WIDGET(self), "menuitem", NULL);
 
 	G_OBJECT_CLASS(sn_item_parent_class)->dispose(obj);
@@ -791,18 +801,9 @@ sn_item_finalize(GObject *object)
 	SnItem *self = SN_ITEM(object);
 
 	g_object_unref(self->actiongroup);
-	gtk_widget_unparent(self->popovermenu);
-	gtk_widget_unparent(self->image);
 
 	g_free(self->busname);
 	g_free(self->busobj);
-
-	/*
-	g_free(self->iconname);
-	if (self->iconpixmap) {
-		g_variant_unref(self->iconpixmap);
-	}
-	*/
 
 	g_slist_free_full(self->cachedicons, cachedicons_free);
 
@@ -813,6 +814,9 @@ sn_item_finalize(GObject *object)
 void
 sn_item_set_menu_model(SnItem *self, GMenu* menu)
 {
+	if (!self->popovermenu)
+		return;
+
 	gtk_popover_menu_set_menu_model(GTK_POPOVER_MENU(self->popovermenu), G_MENU_MODEL(menu));
 }
 
