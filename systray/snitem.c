@@ -99,6 +99,18 @@ argb_to_rgba(int32_t width, int32_t height, unsigned char *icon_data)
 }
 
 static void
+cachedicons_free(void *data)
+{
+	CachedIcon *cicon = (CachedIcon*)data;
+	g_free(cicon->iconname);
+	if (cicon->iconpixmap)
+		g_variant_unref(cicon->iconpixmap);
+	if (cicon->icondata)
+		g_object_unref(cicon->icondata);
+	g_free(cicon);
+}
+
+static void
 pixbuf_destroy(unsigned char *pixeld, void *data)
 {
 	g_free(pixeld);
@@ -203,7 +215,7 @@ get_paintable_from_name(const char *iconname, int32_t iconsize)
 	return paintable;
 }
 
-int
+static int
 find_cached_name(CachedIcon *cicon, const char *name)
 {
 
@@ -267,7 +279,7 @@ sn_item_proxy_new_iconname_handler(GObject *obj, GAsyncResult *res, void *data)
 	g_object_unref(self);
 }
 
-int
+static int
 find_cached_pixmap(CachedIcon *cicon, GVariant *pixmap)
 {
 	int ret;
@@ -371,7 +383,7 @@ sn_item_proxy_signal_handler(GDBusProxy *proxy,
 	}
 }
 
-void
+static void
 sn_item_popup(SnItem *self)
 {
 	g_object_set(self, "menuvisible", TRUE, NULL);
@@ -466,7 +478,7 @@ sn_item_proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 	g_object_unref(self);
 }
 
-void
+static void
 sn_item_notify_closed(GtkPopover *popover, void *data)
 {
 	SnItem *self = SN_ITEM(data);
@@ -784,18 +796,6 @@ sn_item_dispose(GObject *obj)
 }
 
 static void
-cachedicons_free(void *data)
-{
-	CachedIcon *cicon = (CachedIcon*)data;
-	g_free(cicon->iconname);
-	if (cicon->iconpixmap)
-		g_variant_unref(cicon->iconpixmap);
-	if (cicon->icondata)
-		g_object_unref(cicon->icondata);
-	g_free(cicon);
-}
-
-static void
 sn_item_finalize(GObject *object)
 {
 	SnItem *self = SN_ITEM(object);
@@ -851,8 +851,8 @@ sn_item_remove_all_actions(SnItem *self)
 	GSimpleActionGroup *actiongroup = g_simple_action_group_new();
 	g_object_set(self, "actiongroup", actiongroup, NULL);
 	gtk_widget_insert_action_group(GTK_WIDGET(self),
-				       "menuitem",
-				       G_ACTION_GROUP(self->actiongroup));
+	                               "menuitem",
+	                               G_ACTION_GROUP(self->actiongroup));
 }
 
 char*
@@ -879,8 +879,8 @@ sn_item_new(const char *busname, const char *busobj, int iconsize)
 {
 	return g_object_new(SN_TYPE_ITEM,
 	                    "busname", busname,
-			    "busobj", busobj,
-			    "iconsize", iconsize,
-			    NULL);
+	                    "busobj", busobj,
+	                    "iconsize", iconsize,
+	                    NULL);
 }
 /* PUBLIC METHODS */

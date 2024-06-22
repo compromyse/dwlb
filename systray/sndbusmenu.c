@@ -227,7 +227,8 @@ create_menumodel(GVariant *data, SnDbusmenu *self)
 	return ret;
 }
 
-void layout_update(SnDbusmenu *self)
+static void
+layout_update(SnDbusmenu *self)
 {
 	GError *err = NULL;
 
@@ -268,7 +269,7 @@ void layout_update(SnDbusmenu *self)
 	g_variant_unref(data);
 }
 
-void
+static void
 reschedule_update(SnItem *snitem, GParamSpec *pspec, void *data)
 {
 	SnDbusmenu *self = SN_DBUSMENU(data);
@@ -282,7 +283,7 @@ reschedule_update(SnItem *snitem, GParamSpec *pspec, void *data)
 	layout_update(self);
 }
 
-gboolean
+static gboolean
 find_menuid(GMenuModel *menu, int id, GVariant *menu_data, SnDbusmenu *self)
 {
 	gboolean ret = FALSE;

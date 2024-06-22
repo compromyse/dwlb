@@ -163,7 +163,7 @@ sn_host_unregister_item(SnHost *self, SnItem *snitem)
 	GError *err = NULL;
 
 	g_dbus_connection_emit_signal(self->conn,
-                                      NULL,
+	                              NULL,
 	                              "/StatusNotifierWatcher",
 	                              "org.kde.StatusNotifierWatcher",
 	                              "StatusNotifierItemUnregistered",
@@ -313,7 +313,7 @@ sn_host_bus_prop_get_handler(GDBusConnection* conn,
 		return as;
 	} else {
 		g_set_error(err,
-                            G_DBUS_ERROR,
+		            G_DBUS_ERROR,
 		            G_DBUS_ERROR_UNKNOWN_PROPERTY,
 		            "Unknown property '%s'.",
 		            property_name);
@@ -369,12 +369,12 @@ sn_host_bus_name_acquired_handler(GDBusConnection *conn, const char *busname, vo
 	GError *err = NULL;
 
 	g_dbus_connection_emit_signal(self->conn,
-                                      NULL,
-                                      "/StatusNotifierWatcher",
-                                      "org.kde.StatusNotifierWatcher",
-                                      "StatusNotifierHostRegistered",
-                                      NULL,
-                                      &err);
+	                              NULL,
+	                              "/StatusNotifierWatcher",
+	                              "org.kde.StatusNotifierWatcher",
+	                              "StatusNotifierHostRegistered",
+	                              NULL,
+	                              &err);
 
 	if (err) {
 		g_warning("%s", err->message);
