@@ -87,7 +87,6 @@ activate(GtkApplication* app, void *data)
 	GtkWidget *widget = GTK_WIDGET(host);
 	gtk_window_set_child(window, widget);
 
-	dwlb_request_resize(host);
 	gtk_window_present(window);
 }
 

@@ -14,8 +14,6 @@ SnHost	*sn_host_new		(const char *traymon,
 				int margins,
 				int spacing);
 
-void	dwlb_request_resize	(SnHost *self);
-
 G_END_DECLS
 
 #define STATUSNOTIFIERWATCHER_XML	\

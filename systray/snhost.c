@@ -77,7 +77,7 @@ static GDBusInterfaceVTable interface_vtable = {
 };
 
 
-void
+static void
 dwlb_request_resize(SnHost *self)
 {
 	if (self->exiting)
@@ -496,6 +496,8 @@ sn_host_constructed(GObject *obj)
 	gtk_widget_set_margin_bottom(widget, self->margins);
 	gtk_box_set_homogeneous(GTK_BOX(obj), TRUE);
 	gtk_box_set_spacing(GTK_BOX(obj), self->margins);
+
+	dwlb_request_resize(self);
 
 	G_OBJECT_CLASS(sn_host_parent_class)->constructed(obj);
 }
