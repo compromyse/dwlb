@@ -384,8 +384,11 @@ sn_item_proxy_signal_handler(GDBusProxy *proxy,
 }
 
 static void
-sn_item_popup(SnItem *self)
+sn_item_popup(SnDbusmenu *dbusmenu, SnItem *self)
 {
+	if (!GTK_IS_POPOVER_MENU(self->popovermenu))
+		return;
+
 	g_object_set(self, "menuvisible", TRUE, NULL);
 	gtk_popover_popup(GTK_POPOVER(self->popovermenu));
 }
@@ -471,7 +474,7 @@ sn_item_proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 		SnDbusmenu *dbusmenu = sn_dbusmenu_new(self->busname, menu_buspath, g_object_ref(self));
 		g_object_set(self, "dbusmenu", dbusmenu, NULL);
 
-		g_signal_connect_swapped(self->dbusmenu, "abouttoshowhandled", G_CALLBACK(sn_item_popup), self);
+		g_signal_connect(self->dbusmenu, "abouttoshowhandled", G_CALLBACK(sn_item_popup), self);
 		g_variant_unref(menu_buspath_v);
 	}
 	self->ready = TRUE;
