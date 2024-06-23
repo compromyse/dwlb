@@ -151,10 +151,7 @@ sn_host_unregister_item(SnHost *self, SnItem *snitem)
 
 	self->trayitems = g_slist_remove(self->trayitems, snitem);
 
-	g_object_ref(snitem);
 	gtk_box_remove(GTK_BOX(self), GTK_WIDGET(snitem));
-	g_object_run_dispose(G_OBJECT(snitem));
-	g_object_unref(snitem);
 
 	self->nitems = self->nitems - 1;
 

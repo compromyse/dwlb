@@ -35,6 +35,8 @@ struct _SnItem
 	gboolean ready;
 	gboolean exiting;
 	gboolean menu_visible;
+
+	ulong popup_sig_id;
 };
 
 G_DEFINE_FINAL_TYPE(SnItem, sn_item, GTK_TYPE_WIDGET)
@@ -386,8 +388,7 @@ sn_item_proxy_signal_handler(GDBusProxy *proxy,
 static void
 sn_item_popup(SnDbusmenu *dbusmenu, SnItem *self)
 {
-	if (!GTK_IS_POPOVER_MENU(self->popovermenu))
-		return;
+	g_return_if_fail(!SN_IS_ITEM(self) || !GTK_IS_POPOVER_MENU(self->popovermenu));
 
 	g_object_set(self, "menuvisible", TRUE, NULL);
 	gtk_popover_popup(GTK_POPOVER(self->popovermenu));
@@ -471,10 +472,14 @@ sn_item_proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 
 	if (menu_buspath_v && !self->exiting) {
 		g_variant_get(menu_buspath_v, "&o", &menu_buspath);
-		SnDbusmenu *dbusmenu = sn_dbusmenu_new(self->busname, menu_buspath, g_object_ref(self));
+		SnDbusmenu *dbusmenu = sn_dbusmenu_new(self->busname, menu_buspath, self);
 		g_object_set(self, "dbusmenu", dbusmenu, NULL);
 
-		g_signal_connect(self->dbusmenu, "abouttoshowhandled", G_CALLBACK(sn_item_popup), self);
+		self->popup_sig_id = g_signal_connect(self->dbusmenu,
+		                                      "abouttoshowhandled",
+		                                      G_CALLBACK(sn_item_popup),
+		                                      self);
+
 		g_variant_unref(menu_buspath_v);
 	}
 	self->ready = TRUE;
@@ -772,6 +777,8 @@ sn_item_dispose(GObject *obj)
 	self->exiting = TRUE;
 
 	if (self->dbusmenu) {
+		g_signal_handler_disconnect(self->dbusmenu, self->popup_sig_id);
+		self->popup_sig_id = 0;
 		g_object_unref(self->dbusmenu);
 		self->dbusmenu = NULL;
 	}

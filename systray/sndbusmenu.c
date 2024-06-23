@@ -274,13 +274,17 @@ reschedule_update(SnItem *snitem, GParamSpec *pspec, void *data)
 {
 	SnDbusmenu *self = SN_DBUSMENU(data);
 
+	g_return_if_fail(SN_IS_ITEM(self->snitem));
+
 	gboolean popover_visible = sn_item_get_popover_visible(snitem);
 	if (popover_visible || !self->reschedule)
 		return;
 
 	self->reschedule = FALSE;
 
+	g_object_ref(self->snitem);
 	layout_update(self);
+	g_object_unref(self->snitem);
 }
 
 static gboolean
@@ -373,7 +377,11 @@ proxy_signal_handler(GDBusProxy *proxy,
                      void *data)
 {
 	SnDbusmenu *self = SN_DBUSMENU(data);
+
+	g_return_if_fail(SN_IS_ITEM(self->snitem));
+
 	g_mutex_lock(&self->mutex);
+	g_object_ref(self->snitem);
 
 	if (strcmp(signal, "LayoutUpdated") == 0) {
 		gboolean popover_visible = sn_item_get_popover_visible(self->snitem);
@@ -403,6 +411,7 @@ proxy_signal_handler(GDBusProxy *proxy,
 			g_variant_unref(updated_props);
 		}
 	}
+	g_object_unref(self->snitem);
 	g_mutex_unlock(&self->mutex);
 }
 
@@ -653,7 +662,6 @@ sn_dbusmenu_dispose(GObject *obj)
 	        self->busobj);
 
 	g_object_unref(self->proxy);
-	g_object_unref(self->snitem);
 
 	G_OBJECT_CLASS(sn_dbusmenu_parent_class)->dispose(obj);
 }
