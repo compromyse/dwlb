@@ -388,7 +388,7 @@ sn_item_proxy_signal_handler(GDBusProxy *proxy,
 static void
 sn_item_popup(SnDbusmenu *dbusmenu, SnItem *self)
 {
-	g_return_if_fail(!SN_IS_ITEM(self) || !GTK_IS_POPOVER_MENU(self->popovermenu));
+	g_return_if_fail(SN_IS_ITEM(self) || GTK_IS_POPOVER_MENU(self->popovermenu));
 
 	g_object_set(self, "menuvisible", TRUE, NULL);
 	gtk_popover_popup(GTK_POPOVER(self->popovermenu));
