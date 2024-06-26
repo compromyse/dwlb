@@ -28,7 +28,7 @@ struct _SnItem
 
 	GtkWidget* image;
 	GtkWidget* popovermenu;
-	GSimpleActionGroup* actiongroup;
+	GMenu* init_menu;
 	GSList* cachedicons;
 
 	int iconsize;
@@ -47,7 +47,6 @@ enum
 	PROP_BUSOBJ,
 	PROP_ICONSIZE,
 	PROP_PROXY,
-	PROP_ACTIONGROUP,
 	PROP_DBUSMENU,
 	PROP_MENUVISIBLE,
 	N_PROPERTIES
@@ -583,9 +582,6 @@ sn_item_set_property(GObject *object, uint property_id, const GValue *value, GPa
 		case PROP_ICONSIZE:
 			self->iconsize = g_value_get_int(value);
 			break;
-		case PROP_ACTIONGROUP:
-			self->actiongroup = g_value_get_object(value);
-			break;
 		case PROP_DBUSMENU:
 			self->dbusmenu = g_value_get_object(value);
 			break;
@@ -611,9 +607,6 @@ sn_item_get_property(GObject *object, uint property_id, GValue *value, GParamSpe
 			break;
 		case PROP_ICONSIZE:
 			g_value_set_int(value, self->iconsize);
-			break;
-		case PROP_ACTIONGROUP:
-			g_value_set_object(value, self->actiongroup);
 			break;
 		case PROP_DBUSMENU:
 			g_value_set_object(value, self->dbusmenu);
@@ -642,7 +635,6 @@ sn_item_class_init(SnItemClass *klass)
 	object_class->dispose = sn_item_dispose;
 	object_class->finalize = sn_item_finalize;
 
-
 	obj_properties[PROP_BUSNAME] =
 		g_param_spec_string("busname", NULL, NULL,
 		                    NULL,
@@ -665,12 +657,6 @@ sn_item_class_init(SnItemClass *klass)
 		                 G_PARAM_WRITABLE |
 		                 G_PARAM_CONSTRUCT_ONLY |
 		                 G_PARAM_STATIC_STRINGS);
-
-	obj_properties[PROP_ACTIONGROUP] =
-		g_param_spec_object("actiongroup", NULL, NULL,
-		                    G_TYPE_SIMPLE_ACTION_GROUP,
-		                    G_PARAM_READWRITE |
-		                    G_PARAM_STATIC_STRINGS);
 
 	obj_properties[PROP_PROXY] =
 		g_param_spec_object("proxy", NULL, NULL,
@@ -710,12 +696,6 @@ sn_item_init(SnItem *self)
 	GtkWidget *widget = GTK_WIDGET(self);
 
 	self->exiting = FALSE;
-	GSimpleActionGroup *actiongroup = g_simple_action_group_new();
-	g_object_set(self, "actiongroup", actiongroup, NULL);
-
-	gtk_widget_insert_action_group(GTK_WIDGET(self),
-				       "menuitem",
-				       G_ACTION_GROUP(self->actiongroup));
 
 	gtk_widget_set_hexpand(widget, TRUE);
 	gtk_widget_set_vexpand(widget, TRUE);
@@ -726,9 +706,8 @@ sn_item_init(SnItem *self)
 
 	gtk_widget_set_parent(self->image, widget);
 
-	GMenu *init_menu = g_menu_new();
-	self->popovermenu = gtk_popover_menu_new_from_model(G_MENU_MODEL(init_menu));
-	g_object_unref(init_menu);
+	self->init_menu = g_menu_new();
+	self->popovermenu = gtk_popover_menu_new_from_model(G_MENU_MODEL(self->init_menu));
 	gtk_popover_menu_set_flags(GTK_POPOVER_MENU(self->popovermenu), GTK_POPOVER_MENU_NESTED);
 	gtk_popover_set_has_arrow(GTK_POPOVER(self->popovermenu), FALSE);
 	gtk_widget_set_parent(self->popovermenu, widget);
@@ -777,6 +756,9 @@ sn_item_dispose(GObject *obj)
 	self->exiting = TRUE;
 
 	if (self->dbusmenu) {
+		// Unref will be called from sndbusmenu dispose function
+		g_object_ref(self);
+
 		g_signal_handler_disconnect(self->dbusmenu, self->popup_sig_id);
 		self->popup_sig_id = 0;
 		g_object_unref(self->dbusmenu);
@@ -788,19 +770,17 @@ sn_item_dispose(GObject *obj)
 		self->proxy = NULL;
 	}
 
-	sn_item_set_menu_model(self, NULL);
-
 	if (self->popovermenu) {
 		gtk_widget_unparent(self->popovermenu);
 		self->popovermenu = NULL;
+		g_object_unref(self->init_menu);
+		self->init_menu = NULL;
 	}
 
 	if (self->image) {
 		gtk_widget_unparent(self->image);
 		self->image = NULL;
 	}
-
-	gtk_widget_insert_action_group(GTK_WIDGET(self), "menuitem", NULL);
 
 	G_OBJECT_CLASS(sn_item_parent_class)->dispose(obj);
 }
@@ -809,8 +789,6 @@ static void
 sn_item_finalize(GObject *object)
 {
 	SnItem *self = SN_ITEM(object);
-
-	g_object_unref(self->actiongroup);
 
 	g_free(self->busname);
 	g_free(self->busobj);
@@ -824,50 +802,52 @@ sn_item_finalize(GObject *object)
 void
 sn_item_set_menu_model(SnItem *self, GMenu* menu)
 {
+	g_return_if_fail(SN_IS_ITEM(self));
+	g_return_if_fail(G_IS_MENU(menu));
+
 	if (!self->popovermenu)
 		return;
 
 	gtk_popover_menu_set_menu_model(GTK_POPOVER_MENU(self->popovermenu), G_MENU_MODEL(menu));
 }
 
-GSimpleActionGroup*
-sn_item_get_actiongroup(SnItem *self)
+void
+sn_item_clear_menu_model(SnItem *self)
 {
-	GSimpleActionGroup *actiongroup;
-	g_object_get(self, "actiongroup", &actiongroup, NULL);
+	g_return_if_fail(SN_IS_ITEM(self));
 
-	return actiongroup;
+	if (!self->popovermenu)
+		return;
+
+	gtk_popover_menu_set_menu_model(GTK_POPOVER_MENU(self->popovermenu), G_MENU_MODEL(self->init_menu));
 }
 
 void
-sn_item_add_action(SnItem *self, GSimpleAction *action)
+sn_item_set_actiongroup(SnItem *self, const char *prefix, GSimpleActionGroup *group)
 {
-	g_action_map_add_action(G_ACTION_MAP(self->actiongroup), G_ACTION(action));
-}
+	g_return_if_fail(SN_IS_ITEM(self));
+	g_return_if_fail(G_IS_SIMPLE_ACTION_GROUP(group));
 
-void
-sn_item_remove_action(SnItem *self, const char *action_name)
-{
-	g_action_map_remove_action(G_ACTION_MAP(self->actiongroup), action_name);
-}
-
-void
-sn_item_remove_all_actions(SnItem *self)
-{
-	GtkWidget *widget = GTK_WIDGET(self);
-
-	gtk_widget_insert_action_group(widget, "menuitem", NULL);
-	g_object_unref(self->actiongroup);
-	GSimpleActionGroup *actiongroup = g_simple_action_group_new();
-	g_object_set(self, "actiongroup", actiongroup, NULL);
 	gtk_widget_insert_action_group(GTK_WIDGET(self),
-	                               "menuitem",
-	                               G_ACTION_GROUP(self->actiongroup));
+	                               prefix,
+	                               G_ACTION_GROUP(group));
+}
+
+void
+sn_item_clear_actiongroup(SnItem *self, const char *prefix)
+{
+	g_return_if_fail(SN_IS_ITEM(self));
+
+	gtk_widget_insert_action_group(GTK_WIDGET(self),
+	                               prefix,
+	                               NULL);
 }
 
 char*
 sn_item_get_busname(SnItem *self)
 {
+	g_return_val_if_fail(SN_IS_ITEM(self), NULL);
+
 	char *busname;
 	g_object_get(self, "busname", &busname, NULL);
 
@@ -877,6 +857,8 @@ sn_item_get_busname(SnItem *self)
 gboolean
 sn_item_get_popover_visible(SnItem *self)
 {
+	g_return_val_if_fail(SN_IS_ITEM(self), FALSE);
+
 	gboolean visible;
 
 	g_object_get(self, "menuvisible", &visible, NULL);

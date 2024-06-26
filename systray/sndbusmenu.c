@@ -19,6 +19,7 @@ struct _SnDbusmenu {
 	SnItem* snitem;
 
 	GMenu* menu;
+	GSimpleActionGroup* actiongroup;
 	GDBusProxy* proxy;
 
 	uint32_t revision;
@@ -45,6 +46,8 @@ enum
 
 static GParamSpec *obj_properties[N_PROPERTIES] = { NULL, };
 static uint signals[LAST_SIGNAL];
+static const char actiongroup_pfx[] = "menuitem";
+static const int layout_update_freq = 100;
 
 typedef struct {
 	uint32_t id;
@@ -121,6 +124,8 @@ create_action(uint32_t id, SnDbusmenu *self)
 static GMenuItem*
 create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data, SnDbusmenu *self)
 {
+	GActionMap *actionmap = G_ACTION_MAP(self->actiongroup);
+
 	// a{sv]
 	// GVariant *data
 	GMenuItem *menuitem = NULL;
@@ -167,8 +172,8 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 
 	if ((label && isvisible && isenabled) && !(type && strcmp(type, "separator") == 0)) {
 		GSimpleAction *action = create_action(id, self);
-		char *action_name = g_strdup_printf("%s.%u", "menuitem", id);
-		sn_item_add_action(self->snitem, action);
+		char *action_name = g_strdup_printf("%s.%u", actiongroup_pfx, id);
+		g_action_map_add_action(actionmap, G_ACTION(action));
 		menuitem = g_menu_item_new(label, action_name);
 
 		g_free(action_name);
@@ -177,8 +182,8 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 	} else if ((label && isvisible && !isenabled && !(type && strcmp(type, "separator") == 0))) {
 		GSimpleAction *action = create_action(id, self);
 		g_simple_action_set_enabled(action, FALSE);
-		char *action_name = g_strdup_printf("%s.%u", "menuitem", id);
-		sn_item_add_action(self->snitem, action);
+		char *action_name = g_strdup_printf("%s.%u", actiongroup_pfx, id);
+		g_action_map_add_action(actionmap, G_ACTION(action));
 		menuitem = g_menu_item_new(label, action_name);
 
 		g_free(action_name);
@@ -254,18 +259,22 @@ layout_update(SnDbusmenu *self)
 	layout = g_variant_get_child_value(data, 1);
 	menuitems = g_variant_get_child_value(layout, 2);
 
-
 	gboolean isvisible = sn_item_get_popover_visible(self->snitem);
 	if (isvisible) {
 		self->reschedule = TRUE;
 		g_debug("Popover was visible, couldn't update menu %s", self->busname);
 	} else {
+		GSimpleActionGroup *newag = g_simple_action_group_new();
+		sn_item_set_actiongroup(self->snitem, actiongroup_pfx, newag);
+		g_object_unref(self->actiongroup);
+		self->actiongroup = newag;
+
 		GMenu *newmenu = create_menumodel(menuitems, self);
-		// sn_item_remove_all_actions(self->snitem);
 		sn_item_set_menu_model(self->snitem, newmenu);
 		g_object_unref(self->menu);
-		self->menu = create_menumodel(menuitems, self);
+		self->menu = newmenu;
 	}
+
 	g_variant_unref(menuitems);
 	g_variant_unref(layout);
 
@@ -296,10 +305,7 @@ reschedule_update(SnItem *snitem, GParamSpec *pspec, void *data)
 }
 
 // Update signals are often received multiple times in row,
-// we throttle update frequency to 100ms
-
-static const int update_freq = 100;
-
+// we throttle update frequency to *layout_update_freq*
 static void
 proxy_signal_handler(GDBusProxy *proxy,
                      const char *sender,
@@ -324,7 +330,7 @@ proxy_signal_handler(GDBusProxy *proxy,
 		if (!self->update_pending) {
 			self->update_pending = TRUE;
 			g_object_ref(self->snitem);
-			g_timeout_add_once(update_freq, (GSourceOnceFunc)layout_update, g_object_ref(self));
+			g_timeout_add_once(layout_update_freq, (GSourceOnceFunc)layout_update, g_object_ref(self));
 		} else {
 			g_debug("skipping update");
 		}
@@ -335,7 +341,7 @@ proxy_signal_handler(GDBusProxy *proxy,
 		if (!self->update_pending) {
 			self->update_pending = TRUE;
 			g_object_ref(self->snitem);
-			g_timeout_add_once(update_freq, (GSourceOnceFunc)layout_update, g_object_ref(self));
+			g_timeout_add_once(layout_update_freq, (GSourceOnceFunc)layout_update, g_object_ref(self));
 		} else {
 			g_debug("skipping update");
 		}
@@ -553,12 +559,16 @@ sn_dbusmenu_init(SnDbusmenu *self)
 	// When reschedule is TRUE, menu will be updated next time it is closed.
 	self->reschedule = FALSE;
 	self->update_pending = FALSE;
+
+	self->actiongroup = g_simple_action_group_new();
 }
 
 static void
 sn_dbusmenu_constructed(GObject *obj)
 {
 	SnDbusmenu *self = SN_DBUSMENU(obj);
+
+	sn_item_set_actiongroup(self->snitem, actiongroup_pfx, self->actiongroup);
 
 	GDBusNodeInfo *nodeinfo = g_dbus_node_info_new_for_xml(DBUSMENU_XML, NULL);
 	g_dbus_proxy_new_for_bus(G_BUS_TYPE_SESSION,
@@ -584,11 +594,29 @@ sn_dbusmenu_dispose(GObject *obj)
 {
 	SnDbusmenu *self = SN_DBUSMENU(obj);
 
-	g_debug("Disposing sndbusmenu %s %s",
-	        self->busname,
-	        self->busobj);
+	g_debug("Disposing sndbusmenu %s %s", self->busname, self->busobj);
 
-	g_object_unref(self->proxy);
+	if (self->proxy) {
+		g_object_unref(self->proxy);
+		self->proxy = NULL;
+	}
+
+	if (self->actiongroup) {
+		sn_item_clear_actiongroup(self->snitem, actiongroup_pfx);
+		g_object_unref(self->actiongroup);
+		self->actiongroup = NULL;
+	}
+
+	if (self->menu) {
+		sn_item_clear_menu_model(self->snitem);
+		g_object_unref(self->menu);
+		self->menu = NULL;
+	}
+
+	if (self->snitem) {
+		g_object_unref(self->snitem);
+		self->snitem = NULL;
+	}
 
 	G_OBJECT_CLASS(sn_dbusmenu_parent_class)->dispose(obj);
 }
@@ -597,8 +625,6 @@ static void
 sn_dbusmenu_finalize(GObject *obj)
 {
 	SnDbusmenu *self = SN_DBUSMENU(obj);
-	if (self->menu)
-		g_object_unref(self->menu);
 	g_free(self->busname);
 	g_free(self->busobj);
 	G_OBJECT_CLASS(sn_dbusmenu_parent_class)->finalize(obj);

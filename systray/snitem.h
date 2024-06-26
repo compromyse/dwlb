@@ -14,11 +14,11 @@ SnItem*		sn_item_new			(const char *busname,
 						int iconsize);
 
 void		sn_item_set_menu_model		(SnItem *widget, GMenu *menu);
-void		sn_item_add_action		(SnItem *self, GSimpleAction *action);
+void		sn_item_clear_menu_model	(SnItem *widget);
 char*		sn_item_get_busname		(SnItem *self);
 gboolean	sn_item_get_popover_visible	(SnItem *self);
-void            sn_item_remove_action           (SnItem *self, const char *action_name);
-void            sn_item_remove_all_actions      (SnItem *self);
+void		sn_item_set_actiongroup(SnItem *self, const char *prefix, GSimpleActionGroup *group);
+void		sn_item_clear_actiongroup(SnItem *self, const char *prefix);
 
 G_END_DECLS
 
