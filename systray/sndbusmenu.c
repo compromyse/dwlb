@@ -47,7 +47,7 @@ enum
 static GParamSpec *obj_properties[N_PROPERTIES] = { NULL, };
 static uint signals[LAST_SIGNAL];
 static const char actiongroup_pfx[] = "menuitem";
-static const int layout_update_freq = 100;
+static const int layout_update_freq = 80;
 
 typedef struct {
 	uint32_t id;
@@ -406,6 +406,15 @@ about_to_show_handler(GObject *obj, GAsyncResult *res, void *data)
 	GError *err = NULL;
 	GVariant *val =  g_dbus_proxy_call_finish(self->proxy, res, &err);
 
+	// I give up trying to get nm-applet working properly. Wait 2 seconds until popping the menu
+	// to let it finish its business.
+	int timeout;
+	if (strcmp(self->busobj, "/org/ayatana/NotificationItem/nm_applet/Menu" ) == 0) {
+		timeout = 2000;
+	} else {
+		timeout = 100;
+	}
+
 	// Discord generates the following error here:
 	// 'G_DBUS_ERROR' 'G_DBUS_ERROR_FAILED' 'error occurred in AboutToShow'
 	// We ignore it.
@@ -415,8 +424,7 @@ about_to_show_handler(GObject *obj, GAsyncResult *res, void *data)
 
 	} else {
 		// This dbusmenu call might have triggered a menu update,
-		// give it a chance to finish. nm-applet update takes 60ms, give 100ms.
-		g_timeout_add_once(100, about_to_show_timeout_handler, g_object_ref(self));
+		g_timeout_add_once(timeout, about_to_show_timeout_handler, g_object_ref(self));
 	}
 
 	err ? g_error_free(err) : g_variant_unref(val);
