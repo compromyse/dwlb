@@ -232,24 +232,19 @@ create_menumodel(GVariant *data, SnDbusmenu *self)
 }
 
 static void
-layout_update(SnDbusmenu *self)
+layout_update_finish(GObject *obj, GAsyncResult *res, void *udata)
 {
+	SnDbusmenu *self = SN_DBUSMENU(udata);
 	GError *err = NULL;
-
-	g_debug("%s running menu layout update", self->busname);
-	self->update_pending = FALSE;
-
-	GVariant *data = g_dbus_proxy_call_sync(self->proxy,
-						"GetLayout",
-						g_variant_new("(iias)", 0, -1, NULL),
-						G_DBUS_CALL_FLAGS_NONE,
-						-1,
-						NULL,
-						&err);
+	
+	GVariant *data = g_dbus_proxy_call_finish(self->proxy, res, &err);
 
 	if (err) {
 		g_debug("Error in layout_update %s", err->message);
 		g_error_free(err);
+
+		g_object_unref(self->snitem);
+		g_object_unref(self);
 		return;
 	}
 
@@ -282,6 +277,22 @@ layout_update(SnDbusmenu *self)
 
 	g_object_unref(self->snitem);
 	g_object_unref(self);
+}
+
+static void
+layout_update(SnDbusmenu *self)
+{
+	g_debug("%s running menu layout update", self->busname);
+	self->update_pending = FALSE;
+
+	g_dbus_proxy_call(self->proxy,
+	                  "GetLayout",
+	                  g_variant_new("(iias)", 0, -1, NULL),
+	                  G_DBUS_CALL_FLAGS_NONE,
+	                  -1,
+	                  NULL,
+	                  layout_update_finish,
+	                  self);
 }
 
 static void
