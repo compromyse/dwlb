@@ -59,20 +59,20 @@ static void		sn_dbusmenu_dispose		(GObject *object);
 static void		sn_dbusmenu_finalize		(GObject *object);
 
 static void		sn_dbusmenu_get_property	(GObject *object,
-							uint property_id,
-							GValue *value,
-							GParamSpec *pspec);
+                                                        uint property_id,
+                                                        GValue *value,
+                                                        GParamSpec *pspec);
 
 static void		sn_dbusmenu_set_property	(GObject *object,
-							uint property_id,
-							const GValue *value,
-							GParamSpec *pspec);
+                                                        uint property_id,
+                                                        const GValue *value,
+                                                        GParamSpec *pspec);
 
 static GMenu*		create_menumodel		(GVariant *data, SnDbusmenu *self);
 
 static GMenuItem*	create_menuitem			(int32_t id, GVariant *menu_data,
-							GVariant *submenu_data,
-							SnDbusmenu *self);
+                                                        GVariant *submenu_data,
+                                                        SnDbusmenu *self);
 
 
 static void
@@ -137,7 +137,7 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 	gboolean isvisible = TRUE;
 	gboolean has_submenu = FALSE;
 
-	/* 
+	/*
 	 * gboolean ischeckmark = FALSE;
 	 * gboolean isradio = FALSE;
 	 * int32_t toggle_state = 99;
@@ -153,7 +153,7 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 	g_variant_dict_lookup(&dict, "visible", "b", &isvisible);
 	g_variant_dict_lookup(&dict, "children-display", "&s", &has_submenu_s);
 
-	/* 
+	/*
 	 * g_variant_dict_lookup(&dict, "toggle-type", "&s", &toggle_type);
 	 * g_variant_dict_lookup(&dict, "toggle-state", "i", &toggle_state);
 	 */
@@ -163,7 +163,7 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 	if (has_submenu_s && strcmp(has_submenu_s, "submenu") == 0)
 		has_submenu = TRUE;
 
-	/* 
+	/*
 	 * if (toggle_type && strcmp(toggle_type, "checkmark") == 0)
 	 * 	ischeckmark = TRUE;
 	 * else if (toggle_type && strcmp(toggle_type, "radio") == 0)
@@ -195,9 +195,6 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 		g_menu_item_set_submenu(menuitem, G_MENU_MODEL(submenu));
 		g_object_unref(submenu);
 	}
-
-	if (menuitem)
-		g_menu_item_set_attribute(menuitem, "itemid", "i", id);
 
 	return menuitem;
 }
@@ -236,7 +233,7 @@ layout_update_finish(GObject *obj, GAsyncResult *res, void *udata)
 {
 	SnDbusmenu *self = SN_DBUSMENU(udata);
 	GError *err = NULL;
-	
+
 	GVariant *data = g_dbus_proxy_call_finish(self->proxy, res, &err);
 
 	if (err) {
@@ -475,19 +472,19 @@ proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 	}
 
 	g_debug("Created gdbusproxy for menu %s %s",
-	        g_dbus_proxy_get_name(proxy),
-	        g_dbus_proxy_get_object_path(proxy));
+		g_dbus_proxy_get_name(proxy),
+		g_dbus_proxy_get_object_path(proxy));
 
 	g_object_set(self, "proxy", proxy, NULL);
 
 	g_dbus_proxy_call(self->proxy,
-			  "GetLayout",
-			  g_variant_new ("(iias)", 0, -1, NULL),
-			  G_DBUS_CALL_FLAGS_NONE,
-			  -1,
-			  NULL,
-			  menulayout_ready_handler,
-			  g_object_ref(self));
+	                  "GetLayout",
+	                  g_variant_new ("(iias)", 0, -1, NULL),
+	                  G_DBUS_CALL_FLAGS_NONE,
+	                  -1,
+	                  NULL,
+	                  menulayout_ready_handler,
+	                  g_object_ref(self));
 
 	g_signal_connect(self->proxy, "g-signal", G_CALLBACK(proxy_signal_handler), self);
 	g_object_unref(self);
@@ -519,6 +516,7 @@ sn_dbusmenu_set_property(GObject *object, uint property_id, const GValue *value,
 			break;
 		default:
 			G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
+			break;
 	}
 }
 

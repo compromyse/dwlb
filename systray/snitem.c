@@ -72,17 +72,17 @@ static void	sn_item_dispose		(GObject *obj);
 static void	sn_item_finalize	(GObject *obj);
 
 static void	sn_item_size_allocate	(GtkWidget *widget,
-					int width,
-					int height,
-					int baseline);
+                                        int width,
+                                        int height,
+                                        int baseline);
 
 static void	sn_item_measure		(GtkWidget *widget,
-					GtkOrientation orientation,
-					int for_size,
-					int *minimum,
-					int *natural,
-					int *minimum_baseline,
-					int *natural_baseline);
+                                        GtkOrientation orientation,
+                                        int for_size,
+                                        int *minimum,
+                                        int *natural,
+                                        int *minimum_baseline,
+                                        int *natural_baseline);
 
 
 static void
@@ -91,11 +91,11 @@ argb_to_rgba(int32_t width, int32_t height, unsigned char *icon_data)
 	// Icon data is ARGB, gdk textures are RGBA. Flip the channels
 	// Shamelessly copied from Waybar
 	for (int32_t i = 0; i < 4 * width * height; i += 4) {
-	        unsigned char alpha = icon_data[i];
-	        icon_data[i] = icon_data[i + 1];
-	        icon_data[i + 1] = icon_data[i + 2];
-	        icon_data[i + 2] = icon_data[i + 3];
-	        icon_data[i + 3] = alpha;
+		unsigned char alpha = icon_data[i];
+		icon_data[i] = icon_data[i + 1];
+		icon_data[i + 1] = icon_data[i + 2];
+		icon_data[i + 2] = icon_data[i + 3];
+		icon_data[i + 3] = alpha;
 	}
 }
 
@@ -590,6 +590,7 @@ sn_item_set_property(GObject *object, uint property_id, const GValue *value, GPa
 			break;
 		default:
 			G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
+			break;
 	}
 }
 
@@ -616,6 +617,7 @@ sn_item_get_property(GObject *object, uint property_id, GValue *value, GParamSpe
 			break;
 		default:
 			G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
+			break;
 	}
 }
 
@@ -750,8 +752,7 @@ static void
 sn_item_dispose(GObject *obj)
 {
 	SnItem *self = SN_ITEM(obj);
-	g_debug("Disposing snitem %s %s",
-	        self->busname, self->busobj);
+	g_debug("Disposing snitem %s %s", self->busname, self->busobj);
 
 	self->exiting = TRUE;
 

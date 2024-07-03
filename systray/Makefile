@@ -1,6 +1,6 @@
 BINS = dwlbtray
-OBJS = dwlbtray.o snhost.o snitem.o sndbusmenu.o
-DEPS = snhost.h snitem.h sndbusmenu.h
+OBJS = dwlbtray.o snwatcher.o snhost.o snitem.o sndbusmenu.o
+DEPS = snwatcher.h snhost.h snitem.h sndbusmenu.h
 
 PREFIX ?= /usr/local
 CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -g
