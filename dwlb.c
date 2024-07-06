@@ -11,7 +11,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <libgen.h>
 #include <sys/mman.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -113,7 +112,6 @@
 	"	-set-bottom [OUTPUT]		draw bar at the bottom\n" \
 	"	-toggle-location [OUTPUT]	toggle bar location\n"	\
 	"	-no-systray			do not launch the systray program\n"	\
-	"	-traymon [OUTPUT]		set monitor name where systray will appear\n"	\
 	"Other\n"							\
 	"	-v				get version information\n" \
 	"	-h				view this help text\n"
@@ -181,6 +179,8 @@ typedef struct {
 
 	struct wl_list link;
 } Seat;
+
+static const char tray_bin_name[] = "dwlbtray";
 
 static int sock_fd;
 static char socketdir[256];
@@ -1689,8 +1689,6 @@ sig_handler(int sig)
 		run_display = false;
 }
 
-const char tray_bin_name[] = "dwlbtray";
-
 static void
 construct_tray_path(char *path_buf, const char *parent_progname, size_t size)
 {
@@ -1711,14 +1709,10 @@ construct_tray_path(char *path_buf, const char *parent_progname, size_t size)
 		*traypath_maybe = '\0';
 	}
 
-	if (access(traypath_maybe, X_OK) == 0) {
-		if ((strlen(traypath_maybe) + 1) > size) {
-			DIE("Path too long");
-		}
+	if (access(traypath_maybe, X_OK) == 0)
 		snprintf(path_buf, size, "%s", traypath_maybe);
-	} else {
+	else
 		snprintf(path_buf, size, "%s", tray_bin_name);
-	}
 }
 
 static void
@@ -1740,13 +1734,7 @@ construct_trayheight_arg(char *height_arg, size_t size)
 }
 
 static void
-construct_traymon_arg(char *traymon_arg, const char *traymon, size_t size)
-{
-	snprintf(traymon_arg, size, "%s", traymon);
-}
-
-static void
-start_systray(const char *parent_progname, const char *traymon, bool bottom)
+start_systray(const char *parent_progname, bool bottom)
 {
 	char *args[16];
 
@@ -1754,10 +1742,8 @@ start_systray(const char *parent_progname, const char *traymon, bool bottom)
 	char traybg_opt[]        = "-c";
 	char trayheight_opt[]    = "-s";
 	char bottom_opt[]        = "-b";
-	char traymon_opt[]       = "-t";
 	char traybg_arg[16];
 	char trayheight_arg[16];
-	char traymon_arg[64];
 
 	construct_tray_path(argv0, parent_progname, sizeof(argv0));
 	construct_traybg_arg(traybg_arg, sizeof(traybg_arg));
@@ -1769,14 +1755,8 @@ start_systray(const char *parent_progname, const char *traymon, bool bottom)
 	args[curarg++] = traybg_arg;
 	args[curarg++] = trayheight_opt;
 	args[curarg++] = trayheight_arg;
-	if (bottom) {
+	if (bottom)
 		args[curarg++] = bottom_opt;
-	}
-	if (traymon) {
-		construct_traymon_arg(traymon_arg, traymon, sizeof(traymon_arg));
-		args[curarg++] = traymon_opt;
-		args[curarg++] = traymon_arg;
-	}
 	args[curarg] = NULL;
 
 	// Example result:
@@ -1795,7 +1775,6 @@ main(int argc, char **argv)
 	struct sockaddr_un sock_address;
 	Bar *bar, *bar2;
 	Seat *seat, *seat2;
-	const char *traymon = NULL;
 	bool systray_enabled = true;
 
 	/* Establish socket directory */
@@ -1982,10 +1961,6 @@ main(int argc, char **argv)
 			buffer_scale = strtoul(argv[i], &argv[i] + strlen(argv[i]), 10);
 		} else if (!strcmp(argv[i], "-no-systray")) {
 			systray_enabled = false;;
-		} else if (!strcmp(argv[i], "-traymon")) {
-			if (++i >= argc)
-				DIE("Option -traymon requires an argument");
-			traymon = argv[i];
 		} else if (!strcmp(argv[i], "-v")) {
 			fprintf(stderr, PROGRAM " " VERSION "\n");
 			return 0;
@@ -2080,7 +2055,7 @@ main(int argc, char **argv)
 
 	/* Start tray program */
 	if (systray_enabled)
-		start_systray(argv[0], traymon, bottom);
+		start_systray(argv[0], bottom);
 
 	/* Run */
 	run_display = true;
