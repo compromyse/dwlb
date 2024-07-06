@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 
 #include <glib.h>
@@ -11,13 +12,14 @@
 #include "snhost.h"
 
 typedef struct args_parsed {
-	int barheight;
 	char cssdata[64];
+	int barheight;
 	int position;
 } args_parsed;
 
 static const int margin = 4;
 static const int spacing = 4;
+static const char cssskele[] = "window{background-color:%s;}";
 
 enum {
 	DWLB_POSITION_TOP,
@@ -119,28 +121,21 @@ main(int argc, char *argv[])
 	args_parsed args;
 	args.barheight = 22;
 	args.position = DWLB_POSITION_TOP;
+	snprintf(args.cssdata, sizeof(args.cssdata), cssskele, "#222222");
 
-	char *bgcolor = NULL;
-
-	int i = 1;
-	for (; i < argc; i++) {
-		char **strings = g_strsplit(argv[i], "=", 0);
-		if (strcmp(strings[0], "--height") == 0) {
-			args.barheight = strtol(strings[1], NULL, 10);
-		} else if (strcmp(strings[0], "--bg-color") == 0) {
-			bgcolor = strdup(strings[1]);
-		} else if (strcmp(strings[0], "--position") == 0) {
-			if (strcmp(strings[1], "bottom") == 0)
+	int option;
+	while ((option = getopt(argc, argv, "bc:s:")) != -1) {
+		switch (option) {
+			case 'b':    // "bottom"
 				args.position = DWLB_POSITION_BOTTOM;
+				break;
+			case 'c':    // "color"
+				snprintf(args.cssdata, sizeof(args.cssdata), cssskele, optarg);
+				break;
+			case 's':    // "size"
+				args.barheight = strtol(optarg, NULL, 10);
+				break;
 		}
-		g_strfreev(strings);
-	}
-
-	if (bgcolor) {
-		snprintf(args.cssdata, sizeof(args.cssdata), "window{background-color:%s;}", bgcolor);
-		g_free(bgcolor);
-	} else {
-		snprintf(args.cssdata, sizeof(args.cssdata), "window{background-color:%s;}", "#222222");
 	}
 
 	GtkApplication *app = gtk_application_new("org.dwlb.dwlbtray",

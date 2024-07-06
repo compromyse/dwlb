@@ -1689,47 +1689,98 @@ sig_handler(int sig)
 		run_display = false;
 }
 
-static void
-start_systray(const char *parent_progname, const char *traymon, bool bottom)
-{
-	char tray_exe_path[PATH_MAX];
-	char traypath_maybe[PATH_MAX];
-	char progname_buf[PATH_MAX];
-	char traybg_arg[64];
-	char height_arg[64];
-	char traymon_arg[64];
-	char position_arg[64];
+const char tray_bin_name[] = "dwlbtray";
 
+static void
+construct_tray_path(char *path_buf, const char *parent_progname, size_t size)
+{
+	char progname_buf[PATH_MAX];
+	char traypath_maybe[PATH_MAX];
+
+	snprintf(progname_buf, sizeof(progname_buf), "%s", parent_progname);
+
+	char *lastslash = strrchr(progname_buf, '/');
+	if (lastslash) {
+		*lastslash = '\0';
+		snprintf(traypath_maybe,
+		         sizeof(traypath_maybe),
+		         "%s/systray/%s",
+		         progname_buf,
+		         tray_bin_name);
+	} else {
+		*traypath_maybe = '\0';
+	}
+
+	if (access(traypath_maybe, X_OK) == 0) {
+		if ((strlen(traypath_maybe) + 1) > size) {
+			DIE("Path too long");
+		}
+		snprintf(path_buf, size, "%s", traypath_maybe);
+	} else {
+		snprintf(path_buf, size, "%s", tray_bin_name);
+	}
+}
+
+static void
+construct_traybg_arg(char *traybg_arg, size_t size)
+{
 	pixman_color_t *traybg_clr = &inactive_bg_color;
 	snprintf(traybg_arg,
-	         sizeof(traybg_arg),
-	         "--bg-color=#%02x%02x%02x",
+	         size,
+	         "#%02x%02x%02x",
 	         (traybg_clr->red / 0x101),
 	         (traybg_clr->green / 0x101),
 	         (traybg_clr->blue) / 0x101);
+}
 
-	strncpy(progname_buf, parent_progname, sizeof(progname_buf));
-	char *lastslash = strrchr(progname_buf, '/');
-	if (lastslash) {
-		*(lastslash) = '\0';
-		snprintf(traypath_maybe, sizeof(traypath_maybe), "%s/systray/dwlbtray", progname_buf);
-	} else {
-		*(traypath_maybe) = '\0';
+static void
+construct_trayheight_arg(char *height_arg, size_t size)
+{
+	snprintf(height_arg, size, "%u", height);
+}
+
+static void
+construct_traymon_arg(char *traymon_arg, const char *traymon, size_t size)
+{
+	snprintf(traymon_arg, size, "%s", traymon);
+}
+
+static void
+start_systray(const char *parent_progname, const char *traymon, bool bottom)
+{
+	char *args[16];
+
+	char argv0[PATH_MAX];
+	char traybg_opt[]        = "-c";
+	char trayheight_opt[]    = "-s";
+	char bottom_opt[]        = "-b";
+	char traymon_opt[]       = "-t";
+	char traybg_arg[16];
+	char trayheight_arg[16];
+	char traymon_arg[64];
+
+	construct_tray_path(argv0, parent_progname, sizeof(argv0));
+	construct_traybg_arg(traybg_arg, sizeof(traybg_arg));
+	construct_trayheight_arg(trayheight_arg, sizeof(trayheight_arg));
+
+	int curarg = 0;
+	args[curarg++] = argv0;
+	args[curarg++] = traybg_opt;
+	args[curarg++] = traybg_arg;
+	args[curarg++] = trayheight_opt;
+	args[curarg++] = trayheight_arg;
+	if (bottom) {
+		args[curarg++] = bottom_opt;
 	}
-	if (access(traypath_maybe, X_OK) == 0)
-		strcpy(tray_exe_path, traypath_maybe);
-	else
-		strcpy(tray_exe_path, "dwlbtray");
+	if (traymon) {
+		construct_traymon_arg(traymon_arg, traymon, sizeof(traymon_arg));
+		args[curarg++] = traymon_opt;
+		args[curarg++] = traymon_arg;
+	}
+	args[curarg] = NULL;
 
-	snprintf(height_arg, sizeof(height_arg), "--height=%u", height);
-	snprintf(traymon_arg, sizeof(traymon_arg), "--traymon=%s", traymon);
-	if (!bottom)
-		snprintf(position_arg, sizeof(position_arg), "--position=%s", "top");
-	else
-		snprintf(position_arg, sizeof(position_arg), "--position=%s", "bottom");
-	char *args[] = { tray_exe_path, position_arg, height_arg, traybg_arg, traymon_arg, NULL };
-	if (!traymon)
-		args[4] = NULL;
+	// Example result:
+	// char *args[16] = { "/home/user/git/dwlb/systray/dwlbtray", "-c", "#FFFFFF", "-s", "99", "-b", "-t", "DP-1", NULL, *garbage*, ... };
 
 	int child_pid = fork();
 	if (child_pid == 0) {
