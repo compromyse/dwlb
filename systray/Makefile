@@ -1,22 +1,30 @@
-BINS = dwlbtray
-OBJS = dwlbtray.o snwatcher.o snhost.o snitem.o sndbusmenu.o
-DEPS = snwatcher.h snhost.h snitem.h sndbusmenu.h
+PROGNAME    = dwlbtray
+CC          = cc
+RM          = rm -f
+PREFIX      = /usr/local
+CFLAGS      = -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -g
+DEPINCLUDES = `pkg-config --cflags glib-2.0 gtk4 gtk4-layer-shell-0`
+DEPLIBS     = `pkg-config --libs glib-2.0 gtk4 gtk4-layer-shell-0`
+OBJS        = dwlbtray.o snwatcher.o snhost.o snitem.o sndbusmenu.o
 
-PREFIX ?= /usr/local
-CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -g
-
-all: $(BINS)
+all: $(PROGNAME)
 
 clean:
-	$(RM) $(BINS) $(OBJS)
+	$(RM) $(PROGNAME) $(OBJS)
 
 install: all
-	install -D -t $(PREFIX)/bin $(BINS)
+	install -D -t $(PREFIX)/bin $(PROGNAME)
 
-%.o: $(DEPS)
-dwlbtray: $(OBJS)
+dwlbtray: dwlbtray.o snwatcher.o snhost.o snitem.o sndbusmenu.o
+	$(CC) $(LDFLAGS) -o $(PROGNAME) $(OBJS) $(DEPLIBS)
 
-dwlbtray: CFLAGS+=$(shell pkg-config --cflags glib-2.0 gtk4 gtk4-layer-shell-0)
-dwlbtray: LDLIBS+=$(shell pkg-config --libs glib-2.0 gtk4 gtk4-layer-shell-0)
+.SUFFIXES:
+.SUFFIXES: .c .o
+.c.o:
+	$(CC) $(CFLAGS) $(DEPINCLUDES) -c $<
 
-.PHONY: all clean install
+dwlbtray.o: dwlbtray.c snhost.h
+snwatcher.o: snwatcher.c snwatcher.h
+snhost.o: snhost.c snhost.h snwatcher.h snitem.h
+snitem.o: snitem.c snitem.h sndbusmenu.h
+sndbusmenu.o: sndbusmenu.c sndbusmenu.h snitem.h
