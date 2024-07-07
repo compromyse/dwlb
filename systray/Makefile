@@ -1,10 +1,15 @@
+.SUFFIXES:
+
 PROGNAME    = dwlbtray
 CC          = cc
 RM          = rm -f
 PREFIX      = /usr/local
-CFLAGS      = -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -g
-DEPINCLUDES = `pkg-config --cflags glib-2.0 gtk4 gtk4-layer-shell-0`
-DEPLIBS     = `pkg-config --libs glib-2.0 gtk4 gtk4-layer-shell-0`
+CFLAGS      = -Wall -Wextra -g
+SUPPRESS    = -Wno-missing-field-initializers -Wno-unused-parameter
+DEPINCLUDES = `pkg-config --cflags glib-2.0 gobject-2.0 gio-2.0 gdk-pixbuf-2.0 \
+              gtk4 gtk4-layer-shell-0`
+DEPLIBS     = `pkg-config --libs glib-2.0 gobject-2.0 gio-2.0 gdk-pixbuf-2.0 \
+              gtk4 gtk4-layer-shell-0`
 OBJS        = dwlbtray.o snwatcher.o snhost.o snitem.o sndbusmenu.o
 
 all: $(PROGNAME)
@@ -15,13 +20,12 @@ clean:
 install: all
 	install -D -t $(PREFIX)/bin $(PROGNAME)
 
-dwlbtray: dwlbtray.o snwatcher.o snhost.o snitem.o sndbusmenu.o
-	$(CC) $(LDFLAGS) -o $(PROGNAME) $(OBJS) $(DEPLIBS)
+dwlbtray: $(OBJS)
+	$(CC) $(DEPLIBS) -o $(PROGNAME) $(LDFLAGS) $?
 
-.SUFFIXES:
 .SUFFIXES: .c .o
 .c.o:
-	$(CC) $(CFLAGS) $(DEPINCLUDES) -c $<
+	$(CC) -c $(DEPINCLUDES) $(CFLAGS) $(SUPPRESS) $<
 
 dwlbtray.o: dwlbtray.c snhost.h
 snwatcher.o: snwatcher.c snwatcher.h

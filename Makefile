@@ -55,7 +55,7 @@ dwlb: CFLAGS+=$(shell pkg-config --cflags wayland-client wayland-cursor fcft pix
 dwlb: LDLIBS+=$(shell pkg-config --libs wayland-client wayland-cursor fcft pixman-1) -lrt
 
 systray:
-	$(MAKE) -C systray
+	$(MAKE) -e -C systray
 
 
 .PHONY: all systray clean install
