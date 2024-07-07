@@ -24,17 +24,12 @@ G_DEFINE_FINAL_TYPE(SnWatcher, sn_watcher, G_TYPE_OBJECT)
 
 enum
 {
-	N_PROPERTIES = 1,
-};
-
-enum
-{
 	TRAYITEM_REGISTERED,
 	TRAYITEM_UNREGISTERED,
 	LAST_SIGNAL
 };
 
-static uint signals[LAST_SIGNAL];
+static unsigned int signals[LAST_SIGNAL];
 
 static void		sn_watcher_dispose			(GObject *obj);
 
@@ -216,11 +211,14 @@ sn_watcher_monitor_bus(GDBusConnection* conn,
 		const char *new_owner;
 		g_variant_get(params, "(&s&s&s)", &name, &old_owner, &new_owner);
 		if (strcmp(new_owner, "") == 0) {
-			GList *pmatch = g_list_find_custom(self->tracked_items, name, (GCompareFunc)strcmp);
+			GList *pmatch = g_list_find_custom(self->tracked_items,
+			                                   name,
+			                                   (GCompareFunc)strcmp);
 			if (pmatch) {
 				sn_watcher_unregister_item(self, pmatch->data);
 				g_free(pmatch->data);
-				self->tracked_items = g_list_delete_link(self->tracked_items, pmatch);
+				self->tracked_items = g_list_delete_link(self->tracked_items,
+				                                         pmatch);
 			}
 		}
 	}
@@ -309,14 +307,17 @@ sn_watcher_name_lost_handler(GDBusConnection *conn, const char *busname, void *d
 }
 
 static GObject*
-sn_watcher_constructor(GType type, uint n_construct_properties, GObjectConstructParam *construct_properties)
+sn_watcher_constructor(GType type,
+                       unsigned int n_construct_properties,
+                       GObjectConstructParam *construct_properties)
 {
 	static GObject *singleton = NULL;
 
 	if (singleton == NULL) {
-		singleton = G_OBJECT_CLASS(sn_watcher_parent_class)->constructor(type,
-		                                                                 n_construct_properties,
-		                                                                 construct_properties);
+		singleton =
+			G_OBJECT_CLASS(sn_watcher_parent_class)->constructor(type,
+		                                                             n_construct_properties,
+		                                                             construct_properties);
 		g_object_add_weak_pointer(singleton, (void*)&singleton);
 
 		return singleton;

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <libgen.h>
 #include <sys/mman.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -179,8 +180,6 @@ typedef struct {
 
 	struct wl_list link;
 } Seat;
-
-static const char tray_bin_name[] = "dwlbtray";
 
 static int sock_fd;
 static char socketdir[256];
@@ -1689,24 +1688,27 @@ sig_handler(int sig)
 		run_display = false;
 }
 
+#define MAX_ARGS 16
+#define MAX_ARG_LEN 16
+
 static void
 construct_tray_path(char *path_buf, const char *parent_progname, size_t size)
 {
+	const char tray_bin_name[] = "dwlbtray";
 	char progname_buf[PATH_MAX];
 	char traypath_maybe[PATH_MAX];
 
 	snprintf(progname_buf, sizeof(progname_buf), "%s", parent_progname);
 
-	char *lastslash = strrchr(progname_buf, '/');
-	if (lastslash) {
-		*lastslash = '\0';
+	char *dirpath = dirname(progname_buf);
+	if (dirpath) {
 		snprintf(traypath_maybe,
 		         sizeof(traypath_maybe),
 		         "%s/systray/%s",
-		         progname_buf,
+		         dirpath,
 		         tray_bin_name);
 	} else {
-		*traypath_maybe = '\0';
+		traypath_maybe[0] = '\0';
 	}
 
 	if (access(traypath_maybe, X_OK) == 0)
@@ -1736,14 +1738,14 @@ construct_trayheight_arg(char *height_arg, size_t size)
 static void
 start_systray(const char *parent_progname, bool bottom)
 {
-	char *args[16];
+	char *args[MAX_ARGS];
 
 	char argv0[PATH_MAX];
-	char traybg_opt[]        = "-c";
-	char trayheight_opt[]    = "-s";
-	char bottom_opt[]        = "-b";
-	char traybg_arg[16];
-	char trayheight_arg[16];
+	char traybg_opt[]                 = "-c";
+	char trayheight_opt[]             = "-s";
+	char bottom_opt[]                 = "-b";
+	char traybg_arg[MAX_ARG_LEN];
+	char trayheight_arg[MAX_ARG_LEN];
 
 	construct_tray_path(argv0, parent_progname, sizeof(argv0));
 	construct_traybg_arg(traybg_arg, sizeof(traybg_arg));
@@ -1763,8 +1765,12 @@ start_systray(const char *parent_progname, bool bottom)
 	// char *args[16] = { "/home/user/git/dwlb/systray/dwlbtray", "-c", "#FFFFFF", "-s", "99", "-b", "-t", "DP-1", NULL, *garbage*, ... };
 
 	int child_pid = fork();
-	if (child_pid == 0) {
-		execvp(args[0], args);
+	if (child_pid == -1) {
+		DIE("Fork failed");
+	} else if (child_pid == 0) {
+		if (execvp(args[0], args) == -1) {
+			DIE("Could not start systray program");
+		};
 	}
 }
 

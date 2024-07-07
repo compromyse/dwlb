@@ -30,11 +30,6 @@ Pass `dwlb` as an argument to dwl's `-s` flag. This will populate each connected
 dwl -s 'dwlb -font "monospace:size=16"'
 ```
 
-To specify on which monitor the systray will appear, append option `-traymon [OUTPUT]` to the command line:
-```bash
-dwl -s 'dwlb -font "monospace:size=16" -traymon DP-1'
-```
-
 ## Ipc
 If dwl is [patched](https://github.com/djpohly/dwl/wiki/ipc) appropriately, dwlb is capable of communicating directly with dwl. When ipc is enabled with `-ipc`, dwlb does not read from stdin, and clicking tags functions as you would expect. Ipc can be disabled with `-no-ipc`.
 

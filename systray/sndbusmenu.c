@@ -1,8 +1,10 @@
 #include "sndbusmenu.h"
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 
 #include <glib.h>
 #include <glib-object.h>
@@ -44,8 +46,10 @@ enum
 	LAST_SIGNAL
 };
 
+#define ACTION_NAME_MAX_LEN 32
+
 static GParamSpec *obj_properties[N_PROPERTIES] = { NULL, };
-static uint signals[LAST_SIGNAL];
+static unsigned int signals[LAST_SIGNAL];
 static const char actiongroup_pfx[] = "menuitem";
 static const int layout_update_freq = 80;
 
@@ -59,12 +63,12 @@ static void		sn_dbusmenu_dispose		(GObject *object);
 static void		sn_dbusmenu_finalize		(GObject *object);
 
 static void		sn_dbusmenu_get_property	(GObject *object,
-                                                        uint property_id,
+                                                        unsigned int property_id,
                                                         GValue *value,
                                                         GParamSpec *pspec);
 
 static void		sn_dbusmenu_set_property	(GObject *object,
-                                                        uint property_id,
+                                                        unsigned int property_id,
                                                         const GValue *value,
                                                         GParamSpec *pspec);
 
@@ -102,8 +106,9 @@ action_free(void *data, GClosure *closure)
 static GSimpleAction*
 create_action(uint32_t id, SnDbusmenu *self)
 {
-	char *action_name = g_strdup_printf("%u", id);
-	GSimpleAction *action = g_simple_action_new(action_name, NULL);
+	char name[ACTION_NAME_MAX_LEN];
+	snprintf(name, sizeof(name), "%u", id);
+	GSimpleAction *action = g_simple_action_new(name, NULL);
 
 	ActionCallbackData *data = g_malloc(sizeof(ActionCallbackData));
 	data->id = id;
@@ -115,8 +120,6 @@ create_action(uint32_t id, SnDbusmenu *self)
 	                      data,
 	                      action_free,
 	                      G_CONNECT_DEFAULT);
-
-	g_free(action_name);
 
 	return action;
 }
@@ -131,6 +134,7 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 	GMenuItem *menuitem = NULL;
 
 
+	char detailed_name[ACTION_NAME_MAX_LEN];
 	const char *label = NULL;
 	const char *type = NULL;
 	gboolean isenabled = TRUE;
@@ -172,21 +176,20 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 
 	if ((label && isvisible && isenabled) && !(type && strcmp(type, "separator") == 0)) {
 		GSimpleAction *action = create_action(id, self);
-		char *action_name = g_strdup_printf("%s.%u", actiongroup_pfx, id);
+		snprintf(detailed_name, sizeof(detailed_name), "%s.%u", actiongroup_pfx, id);
 		g_action_map_add_action(actionmap, G_ACTION(action));
-		menuitem = g_menu_item_new(label, action_name);
+		menuitem = g_menu_item_new(label, detailed_name);
 
-		g_free(action_name);
 		g_object_unref(action);
 
-	} else if ((label && isvisible && !isenabled && !(type && strcmp(type, "separator") == 0))) {
+	} else if ((label && isvisible && !isenabled &&
+	           !(type && strcmp(type, "separator") == 0))) {
 		GSimpleAction *action = create_action(id, self);
 		g_simple_action_set_enabled(action, FALSE);
-		char *action_name = g_strdup_printf("%s.%u", actiongroup_pfx, id);
+		snprintf(detailed_name, sizeof(detailed_name), "%s.%u", actiongroup_pfx, id);
 		g_action_map_add_action(actionmap, G_ACTION(action));
-		menuitem = g_menu_item_new(label, action_name);
+		menuitem = g_menu_item_new(label, detailed_name);
 
-		g_free(action_name);
 		g_object_unref(action);
 	}
 
@@ -338,7 +341,9 @@ proxy_signal_handler(GDBusProxy *proxy,
 		if (!self->update_pending) {
 			self->update_pending = TRUE;
 			g_object_ref(self->snitem);
-			g_timeout_add_once(layout_update_freq, (GSourceOnceFunc)layout_update, g_object_ref(self));
+			g_timeout_add_once(layout_update_freq,
+			                   (GSourceOnceFunc)layout_update,
+			                   g_object_ref(self));
 		} else {
 			g_debug("skipping update");
 		}
@@ -349,7 +354,9 @@ proxy_signal_handler(GDBusProxy *proxy,
 		if (!self->update_pending) {
 			self->update_pending = TRUE;
 			g_object_ref(self->snitem);
-			g_timeout_add_once(layout_update_freq, (GSourceOnceFunc)layout_update, g_object_ref(self));
+			g_timeout_add_once(layout_update_freq,
+			                   (GSourceOnceFunc)layout_update,
+			                   g_object_ref(self));
 		} else {
 			g_debug("skipping update");
 		}
@@ -491,13 +498,19 @@ proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
 }
 
 static void
-sn_dbusmenu_get_property(GObject *object, uint property_id, GValue *value, GParamSpec *pspec)
+sn_dbusmenu_get_property(GObject *object,
+                         unsigned int property_id,
+                         GValue *value,
+                         GParamSpec *pspec)
 {
 	G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
 }
 
 static void
-sn_dbusmenu_set_property(GObject *object, uint property_id, const GValue *value, GParamSpec *pspec)
+sn_dbusmenu_set_property(GObject *object,
+                         unsigned int property_id,
+                         const GValue *value,
+                         GParamSpec *pspec)
 {
 	SnDbusmenu *self = SN_DBUSMENU(object);
 

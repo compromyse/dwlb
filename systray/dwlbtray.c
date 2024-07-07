@@ -1,5 +1,7 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
+#include <signal.h>
 #include <string.h>
 
 #include <glib.h>
@@ -69,7 +71,8 @@ activate(GtkApplication* app, void *data)
 	GListModel *mons = gdk_display_get_monitors(display);
 
 	// Create tray for each monitor
-	for (uint i = 0; i < g_list_model_get_n_items(mons); i++) {
+	unsigned int i;
+	for (i = 0; i < g_list_model_get_n_items(mons); i++) {
 		GdkMonitor *mon = g_list_model_get_item(mons, i);
 		const char *conn = gdk_monitor_get_connector(mon);
 

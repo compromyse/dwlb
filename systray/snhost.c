@@ -1,6 +1,9 @@
 #include "snhost.h"
 
 #include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -24,8 +27,8 @@ struct _SnHost
 	GHashTable* snitems;
 	char* mon;
 
-	ulong reg_sub_id;
-	ulong unreg_sub_id;
+	unsigned long reg_sub_id;
+	unsigned long unreg_sub_id;
 
 	int defaultwidth;
 	int defaultheight;
@@ -84,7 +87,10 @@ dwlb_request_resize(SnHost *self)
 
 	sockaddr.sun_family = AF_UNIX;
 
-	snprintf(sockaddr.sun_path, sizeof(sockaddr.sun_path), "%s/dwlb/dwlb-0", g_get_user_runtime_dir());
+	snprintf(sockaddr.sun_path,
+	         sizeof(sockaddr.sun_path),
+	         "%s/dwlb/dwlb-0",
+	         g_get_user_runtime_dir());
 
 	char sockbuf[64];
 	snprintf(sockbuf, sizeof(sockbuf), "%s %s %i", self->mon, "resize", self->curwidth);
@@ -139,7 +145,10 @@ sn_host_unregister_item(SnWatcher *watcher, const char *busname, SnHost *self)
 }
 
 static void
-sn_host_set_property(GObject *object, uint property_id, const GValue *value, GParamSpec *pspec)
+sn_host_set_property(GObject *object,
+                     unsigned int property_id,
+                     const GValue *value,
+                     GParamSpec *pspec)
 {
 	SnHost *self = SN_HOST(object);
 
@@ -169,7 +178,7 @@ sn_host_set_property(GObject *object, uint property_id, const GValue *value, GPa
 }
 
 static void
-sn_host_get_property(GObject *object, uint property_id, GValue *value, GParamSpec *pspec)
+sn_host_get_property(GObject *object, unsigned int property_id, GValue *value, GParamSpec *pspec)
 {
 	G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
 }
@@ -194,8 +203,8 @@ sn_host_class_init(SnHostClass *klass)
 
 	obj_properties[PROP_DEFAULTWIDTH] =
 		g_param_spec_int("defaultwidth", NULL, NULL,
-		                 G_MININT,
-		                 G_MAXINT,
+		                 INT_MIN,
+		                 INT_MAX,
 		                 22,
 		                 G_PARAM_CONSTRUCT_ONLY |
 		                 G_PARAM_WRITABLE |
@@ -203,8 +212,8 @@ sn_host_class_init(SnHostClass *klass)
 
 	obj_properties[PROP_DEFAULTHEIGHT] =
 		g_param_spec_int("defaultheight", NULL, NULL,
-		                 G_MININT,
-		                 G_MAXINT,
+		                 INT_MIN,
+		                 INT_MAX,
 		                 22,
 		                 G_PARAM_CONSTRUCT_ONLY |
 		                 G_PARAM_WRITABLE |
@@ -212,8 +221,8 @@ sn_host_class_init(SnHostClass *klass)
 
 	obj_properties[PROP_ICONSIZE] =
 		g_param_spec_int("iconsize", NULL, NULL,
-		                 G_MININT,
-		                 G_MAXINT,
+		                 INT_MIN,
+		                 INT_MAX,
 		                 22,
 		                 G_PARAM_CONSTRUCT_ONLY |
 		                 G_PARAM_WRITABLE |
@@ -221,8 +230,8 @@ sn_host_class_init(SnHostClass *klass)
 
 	obj_properties[PROP_MARGINS] =
 		g_param_spec_int("margins", NULL, NULL,
-		                 G_MININT,
-		                 G_MAXINT,
+		                 INT_MIN,
+		                 INT_MAX,
 		                 4,
 		                 G_PARAM_CONSTRUCT_ONLY |
 		                 G_PARAM_WRITABLE |
@@ -230,8 +239,8 @@ sn_host_class_init(SnHostClass *klass)
 
 	obj_properties[PROP_SPACING] =
 		g_param_spec_int("spacing", NULL, NULL,
-		                 G_MININT,
-		                 G_MAXINT,
+		                 INT_MIN,
+		                 INT_MAX,
 		                 4,
 		                 G_PARAM_CONSTRUCT_ONLY |
 		                 G_PARAM_WRITABLE |

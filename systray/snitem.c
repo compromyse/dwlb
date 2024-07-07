@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <limits.h>
 #include <string.h>
 
 #include <glib.h>
@@ -31,12 +32,13 @@ struct _SnItem
 	GMenu* init_menu;
 	GSList* cachedicons;
 
+	unsigned long popup_sig_id;
+
 	int iconsize;
 	gboolean ready;
 	gboolean exiting;
 	gboolean menu_visible;
 
-	ulong popup_sig_id;
 };
 
 G_DEFINE_FINAL_TYPE(SnItem, sn_item, GTK_TYPE_WIDGET)
@@ -59,7 +61,7 @@ enum
 };
 
 static GParamSpec *obj_properties[N_PROPERTIES] = { NULL, };
-static uint signals[LAST_SIGNAL];
+static unsigned int signals[LAST_SIGNAL];
 
 typedef struct {
 	GVariant* iconpixmap;
@@ -258,7 +260,9 @@ sn_item_proxy_new_iconname_handler(GObject *obj, GAsyncResult *res, void *data)
 		return;
 	}
 
-	GSList *elem = g_slist_find_custom(self->cachedicons, iconname, (GCompareFunc)find_cached_name);
+	GSList *elem = g_slist_find_custom(self->cachedicons,
+	                                   iconname,
+	                                   (GCompareFunc)find_cached_name);
 
 	if (elem) {
 	// Cache hit
@@ -328,7 +332,9 @@ sn_item_proxy_new_pixmaps_handler(GObject *obj, GAsyncResult *res, void *data)
 		return;
 	}
 
-	GSList *elem = g_slist_find_custom(self->cachedicons, pixmap, (GCompareFunc)find_cached_pixmap);
+	GSList *elem = g_slist_find_custom(self->cachedicons,
+	                                   pixmap,
+	                                   (GCompareFunc)find_cached_pixmap);
 
 	if (elem) {
 	// Cache hit
@@ -365,7 +371,9 @@ sn_item_proxy_signal_handler(GDBusProxy *proxy,
 		if (self->iconpixmap)
 			g_dbus_proxy_call(proxy,
 			                  "org.freedesktop.DBus.Properties.Get",
-			                  g_variant_new("(ss)", "org.kde.StatusNotifierItem", "IconPixmap"),
+			                  g_variant_new("(ss)",
+			                                "org.kde.StatusNotifierItem",
+			                                "IconPixmap"),
 			                  G_DBUS_CALL_FLAGS_NONE,
 			                  -1,
 			                  NULL,
@@ -375,7 +383,9 @@ sn_item_proxy_signal_handler(GDBusProxy *proxy,
 		if (self->iconname)
 			g_dbus_proxy_call(proxy,
 			                  "org.freedesktop.DBus.Properties.Get",
-			                  g_variant_new("(ss)", "org.kde.StatusNotifierItem", "IconName"),
+			                  g_variant_new("(ss)",
+			                                "org.kde.StatusNotifierItem",
+			                                "IconName"),
 			                  G_DBUS_CALL_FLAGS_NONE,
 			                  -1,
 			                  NULL,
@@ -565,7 +575,10 @@ sn_item_size_allocate(GtkWidget *widget,
 }
 
 static void
-sn_item_set_property(GObject *object, uint property_id, const GValue *value, GParamSpec *pspec)
+sn_item_set_property(GObject *object,
+                     unsigned int property_id,
+                     const GValue *value,
+                     GParamSpec *pspec)
 {
 	SnItem *self = SN_ITEM(object);
 
@@ -595,7 +608,7 @@ sn_item_set_property(GObject *object, uint property_id, const GValue *value, GPa
 }
 
 static void
-sn_item_get_property(GObject *object, uint property_id, GValue *value, GParamSpec *pspec)
+sn_item_get_property(GObject *object, unsigned int property_id, GValue *value, GParamSpec *pspec)
 {
 	SnItem *self = SN_ITEM(object);
 
@@ -653,8 +666,8 @@ sn_item_class_init(SnItemClass *klass)
 
 	obj_properties[PROP_ICONSIZE] =
 		g_param_spec_int("iconsize", NULL, NULL,
-		                 G_MININT,
-		                 G_MAXINT,
+		                 INT_MIN,
+		                 INT_MAX,
 		                 22,
 		                 G_PARAM_WRITABLE |
 		                 G_PARAM_CONSTRUCT_ONLY |
@@ -820,7 +833,10 @@ sn_item_clear_menu_model(SnItem *self)
 	if (!self->popovermenu)
 		return;
 
-	gtk_popover_menu_set_menu_model(GTK_POPOVER_MENU(self->popovermenu), G_MENU_MODEL(self->init_menu));
+	GtkPopoverMenu *popovermenu = GTK_POPOVER_MENU(self->popovermenu);
+	GMenuModel *menumodel = G_MENU_MODEL(self->init_menu);
+
+	gtk_popover_menu_set_menu_model(popovermenu, menumodel);
 }
 
 void
