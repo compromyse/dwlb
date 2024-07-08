@@ -14,8 +14,6 @@ SnDbusmenu*	sn_dbusmenu_new		(const char *busname,
 					const char *busobj,
 					SnItem *snitem);
 
-GDBusProxy*	sn_dbusmenu_get_proxy	(SnDbusmenu *self);
-
 G_END_DECLS
 
 #define DBUSMENU_XML	\

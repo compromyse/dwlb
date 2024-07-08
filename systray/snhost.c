@@ -178,18 +178,11 @@ sn_host_set_property(GObject *object,
 }
 
 static void
-sn_host_get_property(GObject *object, unsigned int property_id, GValue *value, GParamSpec *pspec)
-{
-	G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
-}
-
-static void
 sn_host_class_init(SnHostClass *klass)
 {
 	GObjectClass *object_class = G_OBJECT_CLASS(klass);
 
 	object_class->set_property = sn_host_set_property;
-	object_class->get_property = sn_host_get_property;
 	object_class->constructed = sn_host_constructed;
 	object_class->dispose = sn_host_dispose;
 	object_class->finalize = sn_host_finalize;

@@ -21,7 +21,6 @@ typedef struct args_parsed {
 
 static const int margin = 4;
 static const int spacing = 4;
-static const char cssskele[] = "window{background-color:%s;}";
 
 enum {
 	DWLB_POSITION_TOP,
@@ -52,16 +51,16 @@ activate(GtkApplication* app, void *data)
 
 	switch (args->position) {
 		case DWLB_POSITION_TOP:
-			anchors[0] = FALSE;    // left
-			anchors[1] = TRUE;     // right
-			anchors[2] = TRUE;     // top
-			anchors[3] = FALSE;    // bottom
+			anchors[GTK_LAYER_SHELL_EDGE_LEFT]   = FALSE;
+			anchors[GTK_LAYER_SHELL_EDGE_RIGHT]  = TRUE;
+			anchors[GTK_LAYER_SHELL_EDGE_TOP]    = TRUE;
+			anchors[GTK_LAYER_SHELL_EDGE_BOTTOM] = FALSE;
 			break;
 		case DWLB_POSITION_BOTTOM:
-			anchors[0] = FALSE;    // left
-			anchors[1] = TRUE;     // right
-			anchors[2] = FALSE;    // top
-			anchors[3] = TRUE;     // bottom
+			anchors[GTK_LAYER_SHELL_EDGE_LEFT]   = FALSE;
+			anchors[GTK_LAYER_SHELL_EDGE_RIGHT]  = TRUE;
+			anchors[GTK_LAYER_SHELL_EDGE_TOP]    = FALSE;
+			anchors[GTK_LAYER_SHELL_EDGE_BOTTOM] = TRUE;
 			break;
 		default:
 			g_assert_not_reached();
@@ -121,6 +120,8 @@ terminate_app(GtkApplication *app)
 int
 main(int argc, char *argv[])
 {
+	const char cssskele[] = "window{background-color:%s;}";
+
 	args_parsed args;
 	args.barheight = 22;
 	args.position = DWLB_POSITION_TOP;

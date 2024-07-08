@@ -139,6 +139,7 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 	const char *type = NULL;
 	gboolean isenabled = TRUE;
 	gboolean isvisible = TRUE;
+	gboolean isseparator = FALSE;
 	gboolean has_submenu = FALSE;
 
 	/*
@@ -167,6 +168,10 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 	if (has_submenu_s && strcmp(has_submenu_s, "submenu") == 0)
 		has_submenu = TRUE;
 
+	if (type && strcmp(type, "separator") == 0) {
+		isseparator = TRUE;
+	}
+
 	/*
 	 * if (toggle_type && strcmp(toggle_type, "checkmark") == 0)
 	 * 	ischeckmark = TRUE;
@@ -174,7 +179,10 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 	 * 	isradio = TRUE;
 	 */
 
-	if ((label && isvisible && isenabled) && !(type && strcmp(type, "separator") == 0)) {
+	if (!isvisible || isseparator)
+		return NULL;
+
+	if (label && isenabled) {
 		GSimpleAction *action = create_action(id, self);
 		snprintf(detailed_name, sizeof(detailed_name), "%s.%u", actiongroup_pfx, id);
 		g_action_map_add_action(actionmap, G_ACTION(action));
@@ -182,8 +190,7 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 
 		g_object_unref(action);
 
-	} else if ((label && isvisible && !isenabled &&
-	           !(type && strcmp(type, "separator") == 0))) {
+	} else if (label && !isenabled) {
 		GSimpleAction *action = create_action(id, self);
 		g_simple_action_set_enabled(action, FALSE);
 		snprintf(detailed_name, sizeof(detailed_name), "%s.%u", actiongroup_pfx, id);
