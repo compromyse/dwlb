@@ -104,11 +104,16 @@ action_free(void *data, GClosure *closure)
 }
 
 static GSimpleAction*
-create_action(uint32_t id, SnDbusmenu *self)
+create_action(uint32_t id, gboolean ischeckmark, SnDbusmenu *self)
 {
+	GSimpleAction *action;
 	char name[ACTION_NAME_MAX_LEN];
 	snprintf(name, sizeof(name), "%u", id);
-	GSimpleAction *action = g_simple_action_new(name, NULL);
+
+	if (ischeckmark)
+		action = g_simple_action_new_stateful(name, NULL, g_variant_new("b", TRUE));
+	else
+		action = g_simple_action_new(name, NULL);
 
 	ActionCallbackData *data = g_malloc(sizeof(ActionCallbackData));
 	data->id = id;
@@ -129,82 +134,68 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 {
 	GActionMap *actionmap = G_ACTION_MAP(self->actiongroup);
 
-	// a{sv]
-	// GVariant *data
-	GMenuItem *menuitem = NULL;
-
-
 	char detailed_name[ACTION_NAME_MAX_LEN];
 	const char *label = NULL;
-	const char *type = NULL;
+	const char *type_s = NULL;
+	const char *toggle_type_s = NULL;
+	const char *has_submenu_s = NULL;
+
 	gboolean isenabled = TRUE;
 	gboolean isvisible = TRUE;
 	gboolean isseparator = FALSE;
+	gboolean ischeckmark = FALSE;
 	gboolean has_submenu = FALSE;
+	// gboolean isradio = FALSE;
 
-	/*
-	 * gboolean ischeckmark = FALSE;
-	 * gboolean isradio = FALSE;
-	 * int32_t toggle_state = 99;
-	 * const char *toggle_type = NULL;
-	 */
+	gboolean checkmark_toggle_state = TRUE;
 
-	const char *has_submenu_s = NULL;
 	GVariantDict dict;
 	g_variant_dict_init(&dict, menuitem_data);
 	g_variant_dict_lookup(&dict, "label", "&s", &label);
-	g_variant_dict_lookup(&dict, "type", "&s", &type);
+	g_variant_dict_lookup(&dict, "type", "&s", &type_s);
 	g_variant_dict_lookup(&dict, "enabled", "b", &isenabled);
 	g_variant_dict_lookup(&dict, "visible", "b", &isvisible);
 	g_variant_dict_lookup(&dict, "children-display", "&s", &has_submenu_s);
-
-	/*
-	 * g_variant_dict_lookup(&dict, "toggle-type", "&s", &toggle_type);
-	 * g_variant_dict_lookup(&dict, "toggle-state", "i", &toggle_state);
-	 */
-
+	g_variant_dict_lookup(&dict, "toggle-type", "&s", &toggle_type_s);
+	g_variant_dict_lookup(&dict, "toggle-state", "i", &checkmark_toggle_state);
 	g_variant_dict_clear(&dict);
 
 	if (has_submenu_s && strcmp(has_submenu_s, "submenu") == 0)
 		has_submenu = TRUE;
 
-	if (type && strcmp(type, "separator") == 0) {
+	if (type_s && strcmp(type_s, "separator") == 0)
 		isseparator = TRUE;
-	}
-
+	else if (toggle_type_s && strcmp(toggle_type_s, "checkmark") == 0)
+		ischeckmark = TRUE;
 	/*
-	 * if (toggle_type && strcmp(toggle_type, "checkmark") == 0)
-	 * 	ischeckmark = TRUE;
-	 * else if (toggle_type && strcmp(toggle_type, "radio") == 0)
-	 * 	isradio = TRUE;
-	 */
+	else if (toggle_type_s && strcmp(toggle_type_s, "radio") == 0)
+		isradio = TRUE;
+	*/
 
 	if (!isvisible || isseparator)
 		return NULL;
 
-	if (label && isenabled) {
-		GSimpleAction *action = create_action(id, self);
-		snprintf(detailed_name, sizeof(detailed_name), "%s.%u", actiongroup_pfx, id);
-		g_action_map_add_action(actionmap, G_ACTION(action));
-		menuitem = g_menu_item_new(label, detailed_name);
+	GSimpleAction *action = create_action(id, ischeckmark, self);
+	snprintf(detailed_name, sizeof(detailed_name), "%s.%u", actiongroup_pfx, id);
 
-		g_object_unref(action);
+	GMenuItem *menuitem = g_menu_item_new(label, detailed_name);
 
-	} else if (label && !isenabled) {
-		GSimpleAction *action = create_action(id, self);
+	if (!isenabled)
 		g_simple_action_set_enabled(action, FALSE);
-		snprintf(detailed_name, sizeof(detailed_name), "%s.%u", actiongroup_pfx, id);
-		g_action_map_add_action(actionmap, G_ACTION(action));
-		menuitem = g_menu_item_new(label, detailed_name);
 
-		g_object_unref(action);
-	}
+	if (ischeckmark)
+		g_simple_action_set_state(action,
+		                          g_variant_new("b",
+		                                        checkmark_toggle_state));
 
-	if (isvisible && has_submenu) {
+	if (has_submenu) {
 		GMenu *submenu = create_menumodel(submenuitem_data, self);
 		g_menu_item_set_submenu(menuitem, G_MENU_MODEL(submenu));
 		g_object_unref(submenu);
 	}
+
+	g_action_map_add_action(actionmap, G_ACTION(action));
+	g_object_unref(action);
 
 	return menuitem;
 }
