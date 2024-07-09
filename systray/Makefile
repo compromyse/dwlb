@@ -22,7 +22,7 @@ install: all
 	install -D -t $(PREFIX)/bin $(PROGNAME)
 
 $(PROGNAME): $(OBJS)
-	$(CC) $(DEPLIBS) -o $(PROGNAME) $(LDFLAGS) $?
+	$(CC) $(DEPLIBS) $(LDFLAGS) -o $(PROGNAME) $(OBJS)
 
 .SUFFIXES: .c .o
 .c.o:
