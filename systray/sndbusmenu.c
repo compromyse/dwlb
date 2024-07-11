@@ -108,7 +108,7 @@ create_action(uint32_t id, gboolean ischeckmark, SnDbusmenu *self)
 {
 	GSimpleAction *action;
 	char name[ACTION_NAME_MAX_LEN];
-	snprintf(name, sizeof(name), "%u", id);
+	sprintf(name, "%u", id);
 
 	if (ischeckmark)
 		action = g_simple_action_new_stateful(name, NULL, g_variant_new("b", TRUE));
@@ -176,7 +176,7 @@ create_menuitem(int32_t id, GVariant *menuitem_data, GVariant *submenuitem_data,
 		return NULL;
 
 	GSimpleAction *action = create_action(id, ischeckmark, self);
-	snprintf(detailed_name, sizeof(detailed_name), "%s.%u", actiongroup_pfx, id);
+	sprintf(detailed_name, "%s.%u", actiongroup_pfx, id);
 
 	GMenuItem *menuitem = g_menu_item_new(label, detailed_name);
 

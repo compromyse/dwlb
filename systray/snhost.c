@@ -92,7 +92,7 @@ dwlb_request_resize(SnHost *self)
 	         "%s/dwlb/dwlb-0",
 	         g_get_user_runtime_dir());
 
-	char sockbuf[64];
+	char sockbuf[64] = {0};
 	snprintf(sockbuf, sizeof(sockbuf), "%s %s %i", self->mon, "resize", self->curwidth);
 	size_t len = strlen(sockbuf);
 	int sock_fd = socket(AF_UNIX, SOCK_STREAM, 1);
