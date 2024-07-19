@@ -1,19 +1,20 @@
 #include "snitem.h"
 
-#include <stdlib.h>
-#include <stdint.h>
-#include <limits.h>
-#include <string.h>
-
-#include <glib.h>
-#include <glib-object.h>
-#include <gio/gio.h>
-#include <gdk/gdk.h>
-#include <gdk-pixbuf/gdk-pixbuf.h>
-#include <gtk/gtk.h>
-
 #include "sndbusmenu.h"
 
+#include <gdk-pixbuf/gdk-pixbuf.h>
+#include <gdk/gdk.h>
+#include <gio/gio.h>
+#include <glib-object.h>
+#include <glib.h>
+#include <gtk/gtk.h>
+
+#include <limits.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 struct _SnItem
 {
@@ -22,23 +23,29 @@ struct _SnItem
 	char* busname;
 	char* busobj;
 
-	GDBusProxy* proxy;
-	char* iconname;
-	GVariant* iconpixmap;
-	SnDbusmenu* dbusmenu;
-
+	GMenu* init_menu;
+	GtkGesture* lclick;
+	GtkGesture* rclick;
 	GtkWidget* image;
 	GtkWidget* popovermenu;
-	GMenu* init_menu;
+
+	GDBusProxy* proxy;
 	GSList* cachedicons;
+	GVariant* iconpixmap;
+	SnDbusmenu* dbusmenu;
+	char *iconpath;
+	char* iconname;
 
-	unsigned long popup_sig_id;
+	unsigned long lclick_id;
+	unsigned long popup_id;
+	unsigned long proxy_id;
+	unsigned long rclick_id;
 
+	int icon_source;
 	int iconsize;
-	gboolean ready;
-	gboolean exiting;
+	int status;
+	gboolean in_destruction;
 	gboolean menu_visible;
-
 };
 
 G_DEFINE_FINAL_TYPE(SnItem, sn_item, GTK_TYPE_WIDGET)
@@ -48,7 +55,6 @@ enum
 	PROP_BUSNAME = 1,
 	PROP_BUSOBJ,
 	PROP_ICONSIZE,
-	PROP_PROXY,
 	PROP_DBUSMENU,
 	PROP_MENUVISIBLE,
 	N_PROPERTIES
@@ -60,14 +66,23 @@ enum
 	LAST_SIGNAL
 };
 
+enum icon_sources
+{
+	ICON_SOURCE_UNKNOWN,
+	ICON_SOURCE_NAME,
+	ICON_SOURCE_PATH,
+	ICON_SOURCE_PIXMAP,
+};
+
 static GParamSpec *obj_properties[N_PROPERTIES] = { NULL, };
 static unsigned int signals[LAST_SIGNAL];
 
 typedef struct {
-	GVariant* iconpixmap;
 	char* iconname;
+	char *iconpath;
+	GVariant* iconpixmap;
 	GdkPaintable* icondata;
-} CachedIcon;
+} cached_icon_t;
 
 static void	sn_item_constructed	(GObject *obj);
 static void	sn_item_dispose		(GObject *obj);
@@ -86,29 +101,84 @@ static void	sn_item_measure		(GtkWidget *widget,
                                         int *minimum_baseline,
                                         int *natural_baseline);
 
+static void request_newicon_name(SnItem *self);
+static void request_newicon_pixmap(SnItem *self);
+static void request_newicon_path(SnItem *self);
+
+static gboolean
+validate_pixdata(GVariant *icondata)
+{
+	int32_t width, height;
+	GVariant *bytearr;
+	size_t size;
+
+	g_variant_get_child(icondata, 0, "i", &width);
+	g_variant_get_child(icondata, 1, "i", &height);
+	bytearr = g_variant_get_child_value(icondata, 2);
+	size = g_variant_get_size(bytearr);
+
+	g_variant_unref(bytearr);
+
+	if (width == 0 || height == 0 || size == 0)
+		return false;
+	else
+		return true;
+}
 
 static void
 argb_to_rgba(int32_t width, int32_t height, unsigned char *icon_data)
 {
 	// Icon data is ARGB, gdk textures are RGBA. Flip the channels
-	// Shamelessly copied from Waybar
 	for (int32_t i = 0; i < 4 * width * height; i += 4) {
 		unsigned char alpha = icon_data[i];
-		icon_data[i] = icon_data[i + 1];
-		icon_data[i + 1] = icon_data[i + 2];
-		icon_data[i + 2] = icon_data[i + 3];
-		icon_data[i + 3] = alpha;
+		icon_data[i]        = icon_data[i + 1];
+		icon_data[i + 1]    = icon_data[i + 2];
+		icon_data[i + 2]    = icon_data[i + 3];
+		icon_data[i + 3]    = alpha;
 	}
+}
+
+static int
+find_cached_icon_path(cached_icon_t *cicon,
+                      const char *path)
+{
+	if (cicon->iconpath == NULL || path == NULL)
+		return -1;
+
+	return strcmp(cicon->iconname, path);
+}
+
+static int
+find_cached_icon_name(cached_icon_t *cicon,
+                      const char *name)
+{
+	if (cicon->iconname == NULL || name == NULL)
+		return -1;
+
+	return strcmp(cicon->iconname, name);
+}
+
+static int
+find_cached_icon_pixmap(cached_icon_t *cicon, GVariant *pixmap)
+{
+	if (cicon->iconpixmap == NULL || pixmap == NULL)
+		return -1;
+
+	if (g_variant_equal(cicon->iconpixmap, pixmap))
+		return 0;
+	else
+		return 1;
 }
 
 static void
 cachedicons_free(void *data)
 {
-	CachedIcon *cicon = (CachedIcon*)data;
+	cached_icon_t *cicon = (cached_icon_t*)data;
 	g_free(cicon->iconname);
-	if (cicon->iconpixmap)
+	g_free(cicon->iconpath);
+	if (cicon->iconpixmap != NULL)
 		g_variant_unref(cicon->iconpixmap);
-	if (cicon->icondata)
+	if (cicon->icondata != NULL)
 		g_object_unref(cicon->icondata);
 	g_free(cicon);
 }
@@ -120,7 +190,7 @@ pixbuf_destroy(unsigned char *pixeld, void *data)
 }
 
 static GVariant*
-select_icon_by_size(GVariant *icondata_v, int32_t target_icon_size)
+select_icon_by_size(GVariant *vicondata, int32_t target_icon_size)
 {
 	// Apps broadcast icons as variant a(iiay)
 	// Meaning array of tuples, tuple representing an icon
@@ -132,7 +202,7 @@ select_icon_by_size(GVariant *icondata_v, int32_t target_icon_size)
 	int current_index = 0;
 	int32_t diff = INT32_MAX;
 	GVariant *child;
-	g_variant_iter_init(&iter, icondata_v);
+	g_variant_iter_init(&iter, vicondata);
 	while ((child = g_variant_iter_next_value(&iter))) {
 		int32_t curwidth;
 		g_variant_get_child(child, 0, "i", &curwidth);
@@ -149,54 +219,16 @@ select_icon_by_size(GVariant *icondata_v, int32_t target_icon_size)
 		g_variant_unref(child);
 	}
 
-	GVariant *iconpixmap_v = g_variant_get_child_value(icondata_v,
-	                                                   (size_t)selected_index);
+	GVariant *selected = g_variant_get_child_value(vicondata,
+	                                               (size_t)selected_index);
 
-	return iconpixmap_v;
-}
-
-static GdkPaintable*
-get_paintable_from_data(GVariant *iconpixmap_v, int32_t iconsize)
-{
-	GdkPaintable *paintable;
-	GVariantIter iter;
-
-	int32_t width;
-	int32_t height;
-	GVariant *icon_data_v;
-
-	g_variant_iter_init(&iter, iconpixmap_v);
-
-	g_variant_iter_next(&iter, "i", &width);
-	g_variant_iter_next(&iter, "i", &height);
-	icon_data_v = g_variant_iter_next_value(&iter);
-
-	size_t size = g_variant_get_size(icon_data_v);
-	const void *icon_data_dup = g_variant_get_data(icon_data_v);
-
-	unsigned char *icon_data = g_memdup2(icon_data_dup, size);
-	argb_to_rgba(width, height, icon_data);
-
-	int32_t padding = size / height - 4 * width;
-	int32_t rowstride = 4 * width + padding;
-
-	GdkPixbuf *pixbuf = gdk_pixbuf_new_from_data(icon_data,
-	                                             GDK_COLORSPACE_RGB,
-	                                             TRUE,
-	                                             8,
-	                                             width,
-	                                             height,
-	                                             rowstride,
-	                                             (GdkPixbufDestroyNotify)pixbuf_destroy,
-	                                             NULL);
-
-	GdkTexture *texture = gdk_texture_new_for_pixbuf(pixbuf);
-	paintable = GDK_PAINTABLE(texture);
-
-	g_object_unref(pixbuf);
-	g_variant_unref(icon_data_v);
-
-	return paintable;
+	// Discard if the array is empty
+	if (validate_pixdata(selected)) {
+		return selected;
+	} else {
+		g_variant_unref(selected);
+		return NULL;
+	}
 }
 
 static GdkPaintable*
@@ -218,8 +250,74 @@ get_paintable_from_name(const char *iconname, int32_t iconsize)
 	return paintable;
 }
 
+static GdkPaintable*
+get_paintable_from_path(const char *path, int32_t iconsize)
+{
+	GdkPaintable *paintable = NULL;
+
+	GdkPixbuf* pixbuf = gdk_pixbuf_new_from_file_at_size(path,
+	                                                     iconsize,
+	                                                     iconsize,
+	                                                     NULL);
+
+	GdkTexture* texture = gdk_texture_new_for_pixbuf(pixbuf);
+	paintable = GDK_PAINTABLE(texture);
+
+	g_object_unref(pixbuf);
+
+	return paintable;
+}
+
+static GdkPaintable*
+get_paintable_from_data(GVariant *iconpixmap_v, int32_t iconsize)
+{
+	GdkPaintable *paintable;
+	GVariantIter iter;
+
+	int32_t width;
+	int32_t height;
+	GVariant *vicondata;
+
+	g_variant_iter_init(&iter, iconpixmap_v);
+
+	g_variant_iter_next(&iter, "i", &width);
+	g_variant_iter_next(&iter, "i", &height);
+	vicondata = g_variant_iter_next_value(&iter);
+
+	size_t size = g_variant_get_size(vicondata);
+	const void *icon_data_dup = g_variant_get_data(vicondata);
+
+	unsigned char *icon_data = g_memdup2(icon_data_dup, size);
+	argb_to_rgba(width, height, icon_data);
+
+	if (height == 0) {
+		g_variant_unref(vicondata);
+		return NULL;
+	}
+	int32_t padding = size / height - 4 * width;
+	int32_t rowstride = 4 * width + padding;
+
+	GdkPixbuf *pixbuf = gdk_pixbuf_new_from_data(icon_data,
+	                                             GDK_COLORSPACE_RGB,
+	                                             true,
+	                                             8,
+	                                             width,
+	                                             height,
+	                                             rowstride,
+	                                             (GdkPixbufDestroyNotify)pixbuf_destroy,
+	                                             NULL);
+
+	GdkTexture *texture = gdk_texture_new_for_pixbuf(pixbuf);
+	paintable = GDK_PAINTABLE(texture);
+
+	g_object_unref(pixbuf);
+	g_variant_unref(vicondata);
+
+	return paintable;
+}
+
 static void
-sn_item_proxy_new_iconname_handler(GObject *obj, GAsyncResult *res, void *data)
+new_iconname_handler(GObject *obj, GAsyncResult *res, void *data)
 {
 	SnItem *self = SN_ITEM(data);
 	GDBusProxy *proxy = G_DBUS_PROXY(obj);
@@ -228,13 +326,20 @@ sn_item_proxy_new_iconname_handler(GObject *obj, GAsyncResult *res, void *data)
 	GVariant *retvariant = g_dbus_proxy_call_finish(proxy, res, &err);
 	// (v)
 
-	if (err && g_error_matches(err, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT)) {
+	if (err != NULL) {
+		switch (err->code) {
+			case G_DBUS_ERROR_UNKNOWN_OBJECT:
+				// Remote object went away while call was underway
+				break;
+			case G_DBUS_ERROR_UNKNOWN_PROPERTY:
+				// Expected when ICON_SOURCE_UNKNOWN
+				break;
+			default:
+				g_warning("%s\n", err->message);
+				break;
+		}
 		g_error_free(err);
-		g_object_unref(self);
-		return;
-	} else if (err) {
-		g_warning("%s\n", err->message);
-		g_error_free(err);
+		request_newicon_pixmap(self);
 		g_object_unref(self);
 		return;
 	}
@@ -245,9 +350,24 @@ sn_item_proxy_new_iconname_handler(GObject *obj, GAsyncResult *res, void *data)
 	g_variant_get(iconname_v, "&s", &iconname);
 	g_variant_unref(retvariant);
 
+	// New iconname invalid
+	if (iconname == NULL || strcmp(iconname, "") == 0) {
+		self->icon_source = ICON_SOURCE_UNKNOWN;
+		g_variant_unref(iconname_v);
+		g_object_unref(self);
+		request_newicon_pixmap(self);
+		return;
+	// New iconname is a path
+	} else if (access(iconname, R_OK) == 0) {
+		self->icon_source = ICON_SOURCE_UNKNOWN;
+		g_variant_unref(iconname_v);
+		g_object_unref(self);
+		request_newicon_path(self);
+		return;
+	}
 
-	if (strcmp(iconname, self->iconname) == 0) {
 	// Icon didn't change
+	if (strcmp(iconname, self->iconname) == 0) {
 		g_variant_unref(iconname_v);
 		g_object_unref(self);
 		return;
@@ -255,39 +375,32 @@ sn_item_proxy_new_iconname_handler(GObject *obj, GAsyncResult *res, void *data)
 
 	GSList *elem = g_slist_find_custom(self->cachedicons,
 	                                   iconname,
-	                                   (GCompareFunc)strcmp);
+	                                   (GCompareFunc)find_cached_icon_name);
 
-	if (elem) {
 	// Cache hit
-		CachedIcon *cicon = (CachedIcon*)elem->data;
+	if (elem != NULL) {
+		cached_icon_t *cicon = (cached_icon_t*)elem->data;
 		self->iconname = cicon->iconname;
 		gtk_image_set_from_paintable(GTK_IMAGE(self->image), cicon->icondata);
-	} else {
+		g_debug("%s: Icon cache hit - iconname", self->busname);
 	// Cache miss -> cache new icon
-		CachedIcon *cicon = g_malloc0(sizeof(CachedIcon));
+	} else {
+		cached_icon_t *cicon = g_malloc0(sizeof(cached_icon_t));
 		self->iconname = g_strdup(iconname);
 		cicon->iconname = self->iconname;
 		cicon->icondata = get_paintable_from_name(self->iconname,
 		                                          self->iconsize);
 		gtk_image_set_from_paintable(GTK_IMAGE(self->image), cicon->icondata);
 		self->cachedicons = g_slist_prepend(self->cachedicons, cicon);
+		self->icon_source = ICON_SOURCE_NAME;
 	}
 
 	g_variant_unref(iconname_v);
 	g_object_unref(self);
 }
 
-static int
-find_cached_pixmap(CachedIcon *cicon, GVariant *pixmap)
-{
-	if (cicon->iconpixmap && g_variant_equal(cicon->iconpixmap, pixmap))
-		return 0;
-	else
-		return 1;
-}
-
 static void
-sn_item_proxy_new_pixmaps_handler(GObject *obj, GAsyncResult *res, void *data)
+new_iconpath_handler(GObject *obj, GAsyncResult *res, void *data)
 {
 	SnItem *self = SN_ITEM(data);
 	GDBusProxy *proxy = G_DBUS_PROXY(obj);
@@ -296,12 +409,101 @@ sn_item_proxy_new_pixmaps_handler(GObject *obj, GAsyncResult *res, void *data)
 	GVariant *retvariant = g_dbus_proxy_call_finish(proxy, res, &err);
 	// (v)
 
-	if (err && g_error_matches(err, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT)) {
+	if (err != NULL) {
+		switch (err->code) {
+			case G_DBUS_ERROR_UNKNOWN_OBJECT:
+				// Remote object went away while call was underway
+				break;
+			case G_DBUS_ERROR_UNKNOWN_PROPERTY:
+				// Expected when ICON_SOURCE_UNKNOWN
+				break;
+			default:
+				g_warning("%s\n", err->message);
+				break;
+		}
 		g_error_free(err);
+		request_newicon_pixmap(self);
 		g_object_unref(self);
 		return;
-	} else if (err) {
-		g_warning("%s\n", err->message);
+	}
+
+	GVariant *viconpath;
+	const char *iconpath = NULL;
+	g_variant_get(retvariant, "(v)", &viconpath);
+	g_variant_get(viconpath, "&s", &iconpath);
+	g_variant_unref(retvariant);
+
+	// New iconpath is invalid
+	if (iconpath == NULL || strcmp(iconpath, "") == 0 || access(iconpath, R_OK) == 0) {
+		self->icon_source = ICON_SOURCE_UNKNOWN;
+		g_variant_unref(viconpath);
+		g_object_unref(self);
+		request_newicon_pixmap(self);
+		return;
+	// New iconpath is not a path but possibly an iconname
+	} else if (iconpath != NULL && strcmp(iconpath, "") != 0) {
+		self->icon_source = ICON_SOURCE_UNKNOWN;
+		g_variant_unref(viconpath);
+		g_object_unref(self);
+		request_newicon_name(self);
+		return;
+	}
+
+	// Icon didn't change
+	if (strcmp(iconpath, self->iconpath) == 0) {
+		g_variant_unref(viconpath);
+		request_newicon_pixmap(self);
+		g_object_unref(self);
+		return;
+	}
+
+	GSList *elem = g_slist_find_custom(self->cachedicons,
+	                                   iconpath,
+	                                   (GCompareFunc)find_cached_icon_path);
+
+	// Cache hit
+	if (elem != NULL) {
+		cached_icon_t *cicon = (cached_icon_t*)elem->data;
+		self->iconpath = cicon->iconpath;
+		gtk_image_set_from_paintable(GTK_IMAGE(self->image), cicon->icondata);
+		g_debug("%s: Icon cache hit - iconpath", self->busname);
+	// Cache miss -> cache new icon
+	} else {
+		cached_icon_t *cicon = g_malloc0(sizeof(cached_icon_t));
+		self->iconpath = g_strdup(iconpath);
+		cicon->iconpath = self->iconpath;
+		cicon->icondata = get_paintable_from_name(self->iconpath,
+		                                          self->iconsize);
+		gtk_image_set_from_paintable(GTK_IMAGE(self->image), cicon->icondata);
+		self->cachedicons = g_slist_prepend(self->cachedicons, cicon);
+		self->icon_source = ICON_SOURCE_PATH;
+	}
+
+	g_variant_unref(viconpath);
+	g_object_unref(self);
+}
+
+static void
+new_pixmaps_handler(GObject *obj, GAsyncResult *res, void *data)
+{
+	SnItem *self = SN_ITEM(data);
+	GDBusProxy *proxy = G_DBUS_PROXY(obj);
+
+	GError *err = NULL;
+	GVariant *retvariant = g_dbus_proxy_call_finish(proxy, res, &err);
+	// (v)
+
+	if (err != NULL) {
+		switch (err->code) {
+			case G_DBUS_ERROR_UNKNOWN_OBJECT:
+				// Remote object went away while call was underway
+				break;
+			case G_DBUS_ERROR_UNKNOWN_PROPERTY:
+				// Expected when ICON_SOURCE_UNKNOWN
+				break;
+			default:
+				g_warning("%s\n", err->message);
+		}
 		g_error_free(err);
 		g_object_unref(self);
 		return;
@@ -312,8 +514,17 @@ sn_item_proxy_new_pixmaps_handler(GObject *obj, GAsyncResult *res, void *data)
 
 	GVariant *pixmap = select_icon_by_size(newpixmaps, self->iconsize);
 
-	if (g_variant_equal(pixmap, self->iconpixmap)) {
+	// No valid icon in data
+	if (pixmap == NULL) {
+		self->icon_source = ICON_SOURCE_UNKNOWN;
+		g_variant_unref(newpixmaps);
+		g_variant_unref(retvariant);
+		g_object_unref(self);
+		return;
+	}
+
 	// Icon didn't change
+	if (self->iconpixmap && g_variant_equal(pixmap, self->iconpixmap)) {
 		g_variant_unref(pixmap);
 		g_variant_unref(newpixmaps);
 		g_variant_unref(retvariant);
@@ -323,22 +534,24 @@ sn_item_proxy_new_pixmaps_handler(GObject *obj, GAsyncResult *res, void *data)
 
 	GSList *elem = g_slist_find_custom(self->cachedicons,
 	                                   pixmap,
-	                                   (GCompareFunc)find_cached_pixmap);
+	                                   (GCompareFunc)find_cached_icon_pixmap);
 
-	if (elem) {
 	// Cache hit
-		CachedIcon *cicon = (CachedIcon*)elem->data;
+	if (elem != NULL) {
+		cached_icon_t *cicon = (cached_icon_t*)elem->data;
 		self->iconpixmap = cicon->iconpixmap;
 		gtk_image_set_from_paintable(GTK_IMAGE(self->image), cicon->icondata);
-	} else {
+		g_debug("%s: Icon cache hit - pixmap", self->busname);
 	// Cache miss -> cache new icon
-		CachedIcon *cicon = g_malloc0(sizeof(CachedIcon));
+	} else {
+		cached_icon_t *cicon = g_malloc0(sizeof(cached_icon_t));
 		self->iconpixmap = g_variant_ref(pixmap);
 		cicon->iconpixmap = self->iconpixmap;
 		cicon->icondata = get_paintable_from_data(self->iconpixmap,
 		                                          self->iconsize);
 		gtk_image_set_from_paintable(GTK_IMAGE(self->image), cicon->icondata);
 		self->cachedicons = g_slist_prepend(self->cachedicons, cicon);
+		self->icon_source = ICON_SOURCE_PIXMAP;
 	}
 
 	g_variant_unref(pixmap);
@@ -348,7 +561,52 @@ sn_item_proxy_new_pixmaps_handler(GObject *obj, GAsyncResult *res, void *data)
 }
 
 static void
-sn_item_proxy_signal_handler(GDBusProxy *proxy,
+request_newicon_name(SnItem *self)
+{
+	g_dbus_proxy_call(self->proxy,
+			  "org.freedesktop.DBus.Properties.Get",
+			  g_variant_new("(ss)",
+					"org.kde.StatusNotifierItem",
+					"IconName"),
+			  G_DBUS_CALL_FLAGS_NONE,
+			  -1,
+			  NULL,
+			  new_iconname_handler,
+			  g_object_ref(self));
+}
+
+static void
+request_newicon_path(SnItem *self)
+{
+	g_dbus_proxy_call(self->proxy,
+			  "org.freedesktop.DBus.Properties.Get",
+			  g_variant_new("(ss)",
+					"org.kde.StatusNotifierItem",
+					"IconName"),
+			  G_DBUS_CALL_FLAGS_NONE,
+			  -1,
+			  NULL,
+			  new_iconpath_handler,
+			  g_object_ref(self));
+}
+
+static void
+request_newicon_pixmap(SnItem *self)
+{
+	g_dbus_proxy_call(self->proxy,
+			  "org.freedesktop.DBus.Properties.Get",
+			  g_variant_new("(ss)",
+					"org.kde.StatusNotifierItem",
+					"IconPixmap"),
+			  G_DBUS_CALL_FLAGS_NONE,
+			  -1,
+			  NULL,
+			  new_pixmaps_handler,
+			  g_object_ref(self));
+}
+
+static void
+proxy_signal_handler(GDBusProxy *proxy,
                              const char *sender,
                              const char *signal,
                              GVariant *data_v,
@@ -357,143 +615,35 @@ sn_item_proxy_signal_handler(GDBusProxy *proxy,
 	SnItem *self = SN_ITEM(data);
 
 	if (strcmp(signal, "NewIcon") == 0) {
-		if (self->iconpixmap)
-			g_dbus_proxy_call(proxy,
-			                  "org.freedesktop.DBus.Properties.Get",
-			                  g_variant_new("(ss)",
-			                                "org.kde.StatusNotifierItem",
-			                                "IconPixmap"),
-			                  G_DBUS_CALL_FLAGS_NONE,
-			                  -1,
-			                  NULL,
-			                  sn_item_proxy_new_pixmaps_handler,
-			                  g_object_ref(self));
-
-		if (self->iconname)
-			g_dbus_proxy_call(proxy,
-			                  "org.freedesktop.DBus.Properties.Get",
-			                  g_variant_new("(ss)",
-			                                "org.kde.StatusNotifierItem",
-			                                "IconName"),
-			                  G_DBUS_CALL_FLAGS_NONE,
-			                  -1,
-			                  NULL,
-			                  sn_item_proxy_new_iconname_handler,
-			                  g_object_ref(self));
+		switch (self->icon_source) {
+			case ICON_SOURCE_NAME:
+				request_newicon_name(self);
+				break;
+			case ICON_SOURCE_PATH:
+				request_newicon_path(self);
+				break;
+			case ICON_SOURCE_PIXMAP:
+				request_newicon_pixmap(self);
+				break;
+			default:
+				request_newicon_name(self);
+				break;
+		}
 	}
 }
 
 static void
-sn_item_popup(SnDbusmenu *dbusmenu, SnItem *self)
+popup_popover(SnDbusmenu *dbusmenu, SnItem *self)
 {
-	g_return_if_fail(SN_IS_ITEM(self) || GTK_IS_POPOVER_MENU(self->popovermenu));
+	if (self->in_destruction)
+		return;
 
-	g_object_set(self, "menuvisible", TRUE, NULL);
+	g_object_set(self, "menuvisible", true, NULL);
 	gtk_popover_popup(GTK_POPOVER(self->popovermenu));
 }
 
 static void
-sn_item_proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
-{
-	SnItem *self = SN_ITEM(data);
-
-	GError *err = NULL;
-	GDBusProxy *proxy = g_dbus_proxy_new_for_bus_finish(res, &err);
-
-	if (err) {
-		g_warning("Failed to construct gdbusproxy for snitem: %s\n", err->message);
-		g_error_free(err);
-		g_object_unref(self);
-		return;
-	}
-
-	g_debug("Created gdbusproxy for snitem %s %s",
-		g_dbus_proxy_get_name(proxy),
-		g_dbus_proxy_get_object_path(proxy));
-
-	g_object_set(self, "proxy", proxy, NULL);
-
-	g_signal_connect(self->proxy, "g-signal", G_CALLBACK(sn_item_proxy_signal_handler), self);
-
-	const char *iconthemepath;
-	GVariant *iconthemepath_v = g_dbus_proxy_get_cached_property(self->proxy, "IconThemePath");
-	GtkIconTheme *theme = gtk_icon_theme_get_for_display(gdk_display_get_default());
-	if (iconthemepath_v) {
-		g_variant_get(iconthemepath_v, "&s", &iconthemepath);
-		gtk_icon_theme_add_search_path(theme, iconthemepath);
-		g_variant_unref(iconthemepath_v);
-	}
-
-	char *iconname = NULL;
-	GVariant *iconname_v = g_dbus_proxy_get_cached_property(proxy, "IconName");
-	GVariant *iconpixmaps = g_dbus_proxy_get_cached_property(proxy, "IconPixmap");
-
-	if (iconname_v) {
-		g_variant_get(iconname_v, "s", &iconname);
-		if (strcmp(iconname, "") == 0) {
-			g_free(iconname);
-			iconname = NULL;
-		}
-		g_variant_unref(iconname_v);
-	}
-
-	if (iconname) {
-		self->iconname = iconname;
-	} else if (iconpixmaps) {
-		self->iconpixmap = select_icon_by_size(iconpixmaps, self->iconsize);
-	} else {
-		self->iconname = g_strdup("noicon");
-	}
-
-	if (iconpixmaps)
-		g_variant_unref(iconpixmaps);
-
-	CachedIcon *cicon = g_malloc0(sizeof(CachedIcon));
-
-	GdkPaintable *paintable;
-	if (self->iconname) {
-		paintable = get_paintable_from_name(self->iconname, self->iconsize);
-		cicon->iconname = self->iconname;
-		cicon->icondata = paintable;
-	} else {
-		paintable = get_paintable_from_data(self->iconpixmap, self->iconsize);
-		cicon->iconpixmap = self->iconpixmap;
-		cicon->icondata = paintable;
-	}
-
-	self->cachedicons = g_slist_prepend(self->cachedicons, cicon);
-
-	gtk_image_set_from_paintable(GTK_IMAGE(self->image), paintable);
-
-	const char *menu_buspath = NULL;
-	GVariant *menu_buspath_v = g_dbus_proxy_get_cached_property(self->proxy, "Menu");
-
-	if (menu_buspath_v && !self->exiting) {
-		g_variant_get(menu_buspath_v, "&o", &menu_buspath);
-		SnDbusmenu *dbusmenu = sn_dbusmenu_new(self->busname, menu_buspath, self);
-		g_object_set(self, "dbusmenu", dbusmenu, NULL);
-
-		self->popup_sig_id = g_signal_connect(self->dbusmenu,
-		                                      "abouttoshowhandled",
-		                                      G_CALLBACK(sn_item_popup),
-		                                      self);
-
-		g_variant_unref(menu_buspath_v);
-	}
-	self->ready = TRUE;
-	g_object_unref(self);
-}
-
-static void
-sn_item_notify_closed(GtkPopover *popover, void *data)
-{
-	SnItem *self = SN_ITEM(data);
-	g_object_set(self, "menuvisible", FALSE, NULL);
-}
-
-
-static void
-sn_item_leftclick_handler(GtkGestureClick *click,
+leftclick_handler(GtkGestureClick *click,
                           int n_press,
                           double x,
                           double y,
@@ -512,17 +662,171 @@ sn_item_leftclick_handler(GtkGestureClick *click,
 }
 
 static void
-sn_item_rightclick_handler(GtkGestureClick *click,
+rightclick_handler(GtkGestureClick *click,
                            int n_press,
                            double x,
                            double y,
                            void *data)
 {
 	SnItem *self = SN_ITEM(data);
-	if (!self->ready)
+	if (self->in_destruction)
 		return;
 
 	g_signal_emit(self, signals[RIGHTCLICK], 0);
+}
+
+static void
+connect_to_menu(SnItem *self)
+{
+	if (self->in_destruction)
+		return;
+
+	const char *menu_buspath = NULL;
+	GVariant *vmenupath = g_dbus_proxy_get_cached_property(self->proxy, "Menu");
+
+	if (vmenupath != NULL) {
+		g_variant_get(vmenupath, "&o", &menu_buspath);
+		if (strcmp(menu_buspath, "") != 0) {
+			self->dbusmenu = sn_dbusmenu_new(self->busname, menu_buspath, self);
+
+			self->rclick_id = g_signal_connect(self->rclick,
+			                                   "pressed",
+			                                   G_CALLBACK(rightclick_handler),
+			                                   self);
+
+			self->popup_id = g_signal_connect(self->dbusmenu,
+			                                  "abouttoshowhandled",
+			                                  G_CALLBACK(popup_popover),
+			                                  self);
+		}
+		g_variant_unref(vmenupath);
+	}
+}
+
+static void
+select_icon_source(SnItem *self)
+{
+	char *iconname_or_path = NULL;
+	GVariant *vname = g_dbus_proxy_get_cached_property(self->proxy, "IconName");
+	GVariant *vpixmaps = g_dbus_proxy_get_cached_property(self->proxy, "IconPixmap");
+
+	if (vname != NULL) {
+		g_variant_get(vname, "s", &iconname_or_path);
+		if (strcmp(iconname_or_path, "") == 0) {
+			g_free(iconname_or_path);
+			iconname_or_path = NULL;
+		}
+	}
+
+	if (iconname_or_path != NULL && access(iconname_or_path, R_OK) == 0) {
+		self->iconpath = iconname_or_path;
+		self->icon_source = ICON_SOURCE_PATH;
+	} else if (iconname_or_path != NULL) {
+		self->iconname = iconname_or_path;
+		self->icon_source = ICON_SOURCE_NAME;
+	} else if (vpixmaps != NULL) {
+		GVariant *pixmap = select_icon_by_size(vpixmaps, self->iconsize);
+		if (pixmap != NULL) {
+			self->iconpixmap = pixmap;
+			self->icon_source = ICON_SOURCE_PIXMAP;
+		}
+	} else {
+		self->iconname = g_strdup("missing-icon");
+		self->icon_source = ICON_SOURCE_UNKNOWN;
+	}
+
+	if (vname != NULL)
+		g_variant_unref(vname);
+	if (vpixmaps != NULL)
+		g_variant_unref(vpixmaps);
+}
+
+static void
+add_icontheme_path(GDBusProxy *proxy)
+{
+	const char *iconthemepath;
+	GVariant *viconthemepath;
+	GtkIconTheme *theme;
+
+	viconthemepath = g_dbus_proxy_get_cached_property(proxy, "IconThemePath");
+	theme = gtk_icon_theme_get_for_display(gdk_display_get_default());
+
+	if (viconthemepath != NULL) {
+		g_variant_get(viconthemepath, "&s", &iconthemepath);
+		gtk_icon_theme_add_search_path(theme, iconthemepath);
+		g_variant_unref(viconthemepath);
+	}
+}
+
+static void
+proxy_ready_handler(GObject *obj, GAsyncResult *res, void *data)
+{
+	SnItem *self = SN_ITEM(data);
+
+	GError *err = NULL;
+	GDBusProxy *proxy = g_dbus_proxy_new_for_bus_finish(res, &err);
+
+	if (err != NULL) {
+		g_warning("Failed to construct gdbusproxy for snitem: %s\n", err->message);
+		g_error_free(err);
+		g_object_unref(self);
+		return;
+	}
+	self->proxy = proxy;
+	self->proxy_id = g_signal_connect(self->proxy,
+	                                 "g-signal",
+	                                 G_CALLBACK(proxy_signal_handler),
+	                                 self);
+
+	add_icontheme_path(proxy);
+	select_icon_source(self);
+
+	GdkPaintable *paintable;
+	cached_icon_t *cicon = g_malloc0(sizeof(cached_icon_t));
+
+	switch (self->icon_source) {
+		case ICON_SOURCE_NAME:
+			paintable = get_paintable_from_name(self->iconname, self->iconsize);
+			cicon->iconname = self->iconname;
+			cicon->icondata = paintable;
+			break;
+		case ICON_SOURCE_PIXMAP:
+			paintable = get_paintable_from_data(self->iconpixmap, self->iconsize);
+			cicon->iconpixmap = self->iconpixmap;
+			cicon->icondata = paintable;
+			break;
+		case ICON_SOURCE_PATH:
+			paintable = get_paintable_from_path(self->iconpath, self->iconsize);
+			cicon->iconpath = self->iconpath;
+			cicon->icondata = paintable;
+			break;
+		case ICON_SOURCE_UNKNOWN:
+			paintable = get_paintable_from_name(self->iconname, self->iconsize);
+			cicon->iconname = self->iconname;
+			cicon->icondata = paintable;
+			break;
+		default:
+			g_assert_not_reached();
+			break;
+	}
+
+	self->cachedicons = g_slist_prepend(self->cachedicons, cicon);
+	gtk_image_set_from_paintable(GTK_IMAGE(self->image), paintable);
+
+	self->lclick_id = g_signal_connect(self->lclick,
+	                                   "pressed",
+	                                   G_CALLBACK(leftclick_handler),
+	                                   self);
+	connect_to_menu(self);
+
+	g_object_unref(self);
+}
+
+static void
+sn_item_notify_closed(GtkPopover *popover, void *data)
+{
+	SnItem *self = SN_ITEM(data);
+	g_object_set(self, "menuvisible", false, NULL);
 }
 
 static void
@@ -577,9 +881,6 @@ sn_item_set_property(GObject *object,
 			break;
 		case PROP_BUSOBJ:
 			self->busobj = g_strdup(g_value_get_string(value));
-			break;
-		case PROP_PROXY:
-			self->proxy = g_value_get_object(value);
 			break;
 		case PROP_ICONSIZE:
 			self->iconsize = g_value_get_int(value);
@@ -662,12 +963,6 @@ sn_item_class_init(SnItemClass *klass)
 		                 G_PARAM_CONSTRUCT_ONLY |
 		                 G_PARAM_STATIC_STRINGS);
 
-	obj_properties[PROP_PROXY] =
-		g_param_spec_object("proxy", NULL, NULL,
-		                    G_TYPE_DBUS_PROXY,
-		                    G_PARAM_WRITABLE |
-		                    G_PARAM_STATIC_STRINGS);
-
 	obj_properties[PROP_DBUSMENU] =
 		g_param_spec_object("dbusmenu", NULL, NULL,
 		                    SN_TYPE_DBUSMENU,
@@ -676,7 +971,7 @@ sn_item_class_init(SnItemClass *klass)
 
 	obj_properties[PROP_MENUVISIBLE] =
 		g_param_spec_boolean("menuvisible", NULL, NULL,
-		                     FALSE,
+		                     false,
 		                     G_PARAM_CONSTRUCT |
 		                     G_PARAM_READWRITE |
 		                     G_PARAM_STATIC_STRINGS);
@@ -692,6 +987,8 @@ sn_item_class_init(SnItemClass *klass)
 	                                   NULL,
 	                                   G_TYPE_NONE,
 	                                   0);
+
+	gtk_widget_class_set_css_name(widget_class, "systray-item");
 }
 
 static void
@@ -699,32 +996,25 @@ sn_item_init(SnItem *self)
 {
 	GtkWidget *widget = GTK_WIDGET(self);
 
-	self->exiting = FALSE;
-
-	gtk_widget_set_hexpand(widget, TRUE);
-	gtk_widget_set_vexpand(widget, TRUE);
+	self->in_destruction = false;
+	self->icon_source = ICON_SOURCE_UNKNOWN;
 
 	self->image = gtk_image_new();
-	gtk_widget_set_hexpand(self->image, TRUE);
-	gtk_widget_set_vexpand(self->image, TRUE);
-
 	gtk_widget_set_parent(self->image, widget);
 
 	self->init_menu = g_menu_new();
 	self->popovermenu = gtk_popover_menu_new_from_model(G_MENU_MODEL(self->init_menu));
 	gtk_popover_menu_set_flags(GTK_POPOVER_MENU(self->popovermenu), GTK_POPOVER_MENU_NESTED);
-	gtk_popover_set_has_arrow(GTK_POPOVER(self->popovermenu), FALSE);
+	gtk_popover_set_has_arrow(GTK_POPOVER(self->popovermenu), false);
 	gtk_widget_set_parent(self->popovermenu, widget);
 
-	GtkGesture *leftclick = gtk_gesture_click_new();
-	gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(leftclick), 1);
-	g_signal_connect(leftclick, "pressed", G_CALLBACK(sn_item_leftclick_handler), self);
-	gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(leftclick));
+	self->lclick = gtk_gesture_click_new();
+	gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(self->lclick), 1);
+	gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(self->lclick));
 
-	GtkGesture *rightclick = gtk_gesture_click_new();
-	gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(rightclick), 3);
-	g_signal_connect(rightclick, "pressed", G_CALLBACK(sn_item_rightclick_handler), self);
-	gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(rightclick));
+	self->rclick = gtk_gesture_click_new();
+	gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(self->rclick), 3);
+	gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(self->rclick));
 
 	g_signal_connect(self->popovermenu, "closed", G_CALLBACK(sn_item_notify_closed), self);
 }
@@ -742,45 +1032,46 @@ sn_item_constructed(GObject *obj)
 	                         self->busobj,
 	                         "org.kde.StatusNotifierItem",
 	                         NULL,
-	                         sn_item_proxy_ready_handler,
+	                         proxy_ready_handler,
 	                         g_object_ref(self));
 	g_dbus_node_info_unref(nodeinfo);
 
 	G_OBJECT_CLASS(sn_item_parent_class)->constructed(obj);
 }
 
-
 static void
 sn_item_dispose(GObject *obj)
 {
 	SnItem *self = SN_ITEM(obj);
-	g_debug("Disposing snitem %s %s", self->busname, self->busobj);
 
-	self->exiting = TRUE;
+	self->in_destruction = true;
 
-	if (self->dbusmenu) {
+	g_clear_signal_handler(&self->lclick_id, self->lclick);
+	g_clear_signal_handler(&self->rclick_id, self->rclick);
+	g_clear_signal_handler(&self->proxy_id, self->proxy);
+	g_clear_signal_handler(&self->popup_id, self->dbusmenu);
+
+	if (self->dbusmenu != NULL) {
 		// Unref will be called from sndbusmenu dispose function
 		g_object_ref(self);
 
-		g_signal_handler_disconnect(self->dbusmenu, self->popup_sig_id);
-		self->popup_sig_id = 0;
 		g_object_unref(self->dbusmenu);
 		self->dbusmenu = NULL;
 	}
 
-	if (self->proxy) {
+	if (self->proxy != NULL) {
 		g_object_unref(self->proxy);
 		self->proxy = NULL;
 	}
 
-	if (self->popovermenu) {
+	if (self->popovermenu != NULL) {
 		gtk_widget_unparent(self->popovermenu);
 		self->popovermenu = NULL;
 		g_object_unref(self->init_menu);
 		self->init_menu = NULL;
 	}
 
-	if (self->image) {
+	if (self->image != NULL) {
 		gtk_widget_unparent(self->image);
 		self->image = NULL;
 	}
@@ -808,7 +1099,7 @@ sn_item_set_menu_model(SnItem *self, GMenu* menu)
 	g_return_if_fail(SN_IS_ITEM(self));
 	g_return_if_fail(G_IS_MENU(menu));
 
-	if (!self->popovermenu)
+	if (self->popovermenu == NULL)
 		return;
 
 	gtk_popover_menu_set_menu_model(GTK_POPOVER_MENU(self->popovermenu), G_MENU_MODEL(menu));
@@ -819,7 +1110,7 @@ sn_item_clear_menu_model(SnItem *self)
 {
 	g_return_if_fail(SN_IS_ITEM(self));
 
-	if (!self->popovermenu)
+	if (self->popovermenu == NULL)
 		return;
 
 	GtkPopoverMenu *popovermenu = GTK_POPOVER_MENU(self->popovermenu);
@@ -849,27 +1140,12 @@ sn_item_clear_actiongroup(SnItem *self, const char *prefix)
 	                               NULL);
 }
 
-char*
-sn_item_get_busname(SnItem *self)
-{
-	g_return_val_if_fail(SN_IS_ITEM(self), NULL);
-
-	char *busname;
-	g_object_get(self, "busname", &busname, NULL);
-
-	return busname;
-}
-
 gboolean
 sn_item_get_popover_visible(SnItem *self)
 {
-	g_return_val_if_fail(SN_IS_ITEM(self), FALSE);
+	g_return_val_if_fail(SN_IS_ITEM(self), true);
 
-	gboolean visible;
-
-	g_object_get(self, "menuvisible", &visible, NULL);
-
-	return visible;
+	return self->menu_visible;
 }
 
 SnItem*
