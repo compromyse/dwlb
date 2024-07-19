@@ -62,6 +62,12 @@ sn_watcher_register_item(SnWatcher *self,
                          const char *busname,
                          const char *busobj)
 {
+	// Check if we are already tracking this item
+	if (g_list_find_custom(self->tracked_items, busname,(GCompareFunc)strcmp)
+	    != NULL) {
+		return;
+	}
+
 	g_debug("Registering %s", busname);
 	self->tracked_items = g_list_prepend(self->tracked_items, g_strdup(busname));
 
