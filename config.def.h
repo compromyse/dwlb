@@ -11,7 +11,7 @@ static bool hidden = false;
 // initially draw all bars at the bottom
 static bool bottom = false;
 // hide vacant tags
-static bool hide_vacant = false;
+static bool hide_vacant = true;
 // vertical pixel padding above and below text
 static uint32_t vertical_padding = 4;
 // allow in-line color commands in status text
