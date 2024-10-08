@@ -43,5 +43,5 @@ static pixman_color_t inactive_bg_color = HEX_COLOR(0x0f1212ff);
 static pixman_color_t urgent_fg_color = HEX_COLOR(0x131417ff);
 static pixman_color_t urgent_bg_color = HEX_COLOR(0x607767ff);
 
-static pixman_color_t middle_fg_color = HEX_COLOR(0x607767ff);
-static pixman_color_t middle_bg_color = HEX_COLOR(0x0f1212ff);
+static pixman_color_t middle_bg_color = HEX_COLOR(0x607767ff);
+static pixman_color_t middle_bg_color_selected = HEX_COLOR(0x607767ff);
