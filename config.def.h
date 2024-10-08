@@ -21,7 +21,7 @@ static bool center_title = false;
 // use title space as status text element
 static bool custom_title = false;
 // title color use active colors
-static bool active_color_title = true;
+static bool active_color_title = false;
 // scale
 static uint32_t buffer_scale = 1;
 // font
