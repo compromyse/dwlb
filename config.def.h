@@ -9,7 +9,7 @@ static bool ipc = false;
 // initially hide all bars
 static bool hidden = false;
 // initially draw all bars at the bottom
-static bool bottom = false;
+static bool bottom = true;
 // hide vacant tags
 static bool hide_vacant = true;
 // vertical pixel padding above and below text
